@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+/.terraform/
+/.aws-sam/
+*.log
+frontend/node_modules/
+backend/node_modules/

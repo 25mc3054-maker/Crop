@@ -1,0 +1,134 @@
+[
+  {
+    "id": "pm-kisan",
+    "name": "PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)",
+    "provider": "Government of India",
+    "type": "income_support",
+    "category": "government",
+    "description": "Direct income support of ₹6000 per year paid in three equal instalments to small and marginal farmer families.",
+    "eligibility": "Small and marginal landholders, resident Indian citizens.",
+    "benefits": ["Direct cash transfer"],
+    "applyLink": "https://pmkisan.gov.in/"
+  },
+  {
+    "id": "pm-fasal-bima",
+    "name": "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+    "provider": "Government of India",
+    "type": "insurance",
+    "category": "government",
+    "description": "Crop insurance to protect farmers against crop loss due to natural calamities, pests and diseases.",
+    "eligibility": "All farmers growing notified crops in notified areas.",
+    "benefits": ["Insurance cover", "Premium subsidy"],
+    "applyLink": "https://pmfby.gov.in/"
+  },
+  {
+    "id": "soil-health-card",
+    "name": "Soil Health Card Scheme",
+    "provider": "Government of India",
+    "type": "soil_testing",
+    "category": "government",
+    "description": "Free soil testing and tailored fertilizer recommendations to farmers.",
+    "eligibility": "All farmers",
+    "benefits": ["Free soil test"],
+    "applyLink": "https://soilhealth.dac.gov.in/"
+  },
+  {
+    "id": "pm-kusum",
+    "name": "PM-KUSUM (Pradhan Mantri Kisan Urja Suraksha evam Utthaan Mahaabhiyaan)",
+    "provider": "Government of India",
+    "type": "renewable_energy",
+    "category": "government",
+    "description": "Solarisation of agricultural pumps, decentralised solar power plants and solar water pumps for farmers.",
+    "eligibility": "Irrigating farmers and C&I entities meeting scheme rules.",
+    "benefits": ["Solar pumps", "Income from surplus power"],
+    "applyLink": "https://mnre.gov.in/pm-kusum"
+  },
+  {
+    "id": "pmksy",
+    "name": "Pradhan Mantri Krishi Sinchai Yojana (PMKSY)",
+    "provider": "Government of India",
+    "type": "irrigation",
+    "category": "government",
+    "description": "Accelerated irrigation benefit programme to improve farm productivity through efficient water use and irrigation.",
+    "eligibility": "Farmers and farmer groups.",
+    "benefits": ["Improved irrigation", "Micro-irrigation subsidy"],
+    "applyLink": "https://pmksy.gov.in/"
+  },
+  {
+    "id": "kcc",
+    "name": "Kisan Credit Card (KCC)",
+    "provider": "Government of India / Banks",
+    "type": "credit",
+    "category": "government",
+    "description": "Short-term credit support to farmers for cultivation and other agriculture needs at subsidised interest rates.",
+    "eligibility": "Cultivators, tenant farmers, sharecroppers.",
+    "benefits": ["Working capital", "Subsidised interest"],
+    "applyLink": "https://www.nabard.org/"
+  },
+  {
+    "id": "midy",
+    "name": "MIDH (Mission for Integrated Development of Horticulture)",
+    "provider": "Government of India",
+    "type": "horticulture",
+    "category": "government",
+    "description": "Support for horticulture development, processing and value addition.",
+    "eligibility": "Horticulture farmers and processors.",
+    "benefits": ["Subsidies", "Technical support"],
+    "applyLink": "https://horticulture.gov.in/"
+  },
+  {
+    "id": "pkvy",
+    "name": "Paramparagat Krishi Vikas Yojana (PKVY)",
+    "provider": "Government of India",
+    "type": "organic",
+    "category": "government",
+    "description": "Promotion of organic farming through cluster-based approaches and support to farmers.",
+    "eligibility": "Farmer clusters and groups.",
+    "benefits": ["Organic certification support"],
+    "applyLink": "https://pdkv.gov.in/"
+  },
+  {
+    "id": "rkv-y",
+    "name": "Rashtriya Krishi Vikas Yojana (RKVY)",
+    "provider": "Government of India",
+    "type": "development",
+    "category": "government",
+    "description": "Support state-level agriculture development projects and schemes.",
+    "eligibility": "State agriculture departments and implementing agencies.",
+    "benefits": ["Project funding", "Capacity building"],
+    "applyLink": "https://agricoop.nic.in/"
+  },
+  {
+    "id": "nam-enam",
+    "name": "e-NAM (National Agriculture Market)",
+    "provider": "Government of India",
+    "type": "marketplace",
+    "category": "government",
+    "description": "Online trading portal to connect farmers to markets across India.",
+    "eligibility": "Registered farmers and mandis.",
+    "benefits": ["Market access", "Transparent pricing"],
+    "applyLink": "https://enam.gov.in/"
+  },
+  {
+    "id": "nfsm",
+    "name": "National Food Security Mission (NFSM)",
+    "provider": "Government of India",
+    "type": "productivity",
+    "category": "government",
+    "description": "Increase production of rice, wheat, pulses, and other crops through improved practices.",
+    "eligibility": "Farmers practicing targeted crops.",
+    "benefits": ["Seed support", "Technical assistance"],
+    "applyLink": "https://agricoop.nic.in/"
+  },
+  {
+    "id": "fpo-support",
+    "name": "Support for Farmer Producer Organisations (FPOs)",
+    "provider": "Government of India",
+    "type": "institutional",
+    "category": "government",
+    "description": "Financial and technical support for formation and scaling of FPOs.",
+    "eligibility": "Registered FPOs and farmer groups.",
+    "benefits": ["Grant support", "Capacity building"],
+    "applyLink": "https://sfacindia.org/"
+  }
+]

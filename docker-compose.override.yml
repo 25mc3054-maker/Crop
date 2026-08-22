@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  frontend:
+    environment:
+      - API_BASE=http://host.docker.internal:4000
+  backend:
+    environment:
+      - NODE_ENV=development

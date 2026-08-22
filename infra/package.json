@@ -1,0 +1,9 @@
+{
+  "name": "krishi-infra-tools",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "minimist": "^1.2.8",
+    "aws-sdk": "^2.1350.0"
+  }
+}

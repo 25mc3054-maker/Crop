@@ -1,0 +1,33 @@
+{
+  "Comment": "Krishi Agent workflow: check price, analyze image, generate contract",
+  "StartAt": "CheckMandiPrice",
+  "States": {
+    "CheckMandiPrice": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:REGION:ACCOUNT:function:CheckMandiPrice",
+        "Payload.$": "$"
+      },
+      "Next": "AnalyzeSoilImage"
+    },
+    "AnalyzeSoilImage": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:REGION:ACCOUNT:function:AnalyzeSoilImage",
+        "Payload.$": "$"
+      },
+      "Next": "GenerateContract"
+    },
+    "GenerateContract": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:REGION:ACCOUNT:function:GenerateContract",
+        "Payload.$": "$"
+      },
+      "End": true
+    }
+  }
+}

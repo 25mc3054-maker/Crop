@@ -1,0 +1,12 @@
+{
+  "name": "krishi-agent-lambda-tests",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "jest --runInBand"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.1693.0",
+    "jest": "29.6.1"
+  }
+}

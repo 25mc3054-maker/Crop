@@ -1,0 +1,14 @@
+{
+  "hi": { "pollyVoice": "Aditi", "pollyLang": "hi-IN" },
+  "kn": { "pollyVoice": "Aditi", "pollyLang": "kn-IN" },
+  "mr": { "pollyVoice": "Aditi", "pollyLang": "hi-IN" },
+  "bn": { "pollyVoice": "Aditi", "pollyLang": "bn-IN" },
+  "ta": { "pollyVoice": "Aditi", "pollyLang": "ta-IN" },
+  "te": { "pollyVoice": "Aditi", "pollyLang": "te-IN" },
+  "gu": { "pollyVoice": "Aditi", "pollyLang": "gu-IN" },
+  "pa": { "pollyVoice": "Aditi", "pollyLang": "pa-IN" },
+  "ml": { "pollyVoice": "Aditi", "pollyLang": "ml-IN" },
+  "or": { "pollyVoice": "Aditi", "pollyLang": "or-IN" },
+  "as": { "pollyVoice": "Aditi", "pollyLang": "as-IN" },
+  "en": { "pollyVoice": "Joanna", "pollyLang": "en-IN" }
+}
