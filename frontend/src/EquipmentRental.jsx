@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from './config'
 import { CACHE_KEYS, readLiveCache, writeLiveCache } from './livePreload'
+import Navbar from './components/Navbar'
 
 export default function EquipmentRental({ onBack }) {
   const cachedEquipment = readLiveCache(CACHE_KEYS.equipment, 20 * 60 * 1000)
@@ -68,76 +69,90 @@ export default function EquipmentRental({ onBack }) {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        fetchAgencies({ lat: position.coords.latitude, lon: position.coords.longitude }, showLoader)
+        fetchAgencies(
+          {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude
+          },
+          showLoader
+        )
       },
       () => {
         fetchAgencies(null, showLoader)
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     )
   }
 
   return (
-    <div className="container">
-      <button onClick={onBack} style={{ marginBottom: '1rem', padding: '10px 16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#f8fafc', cursor: 'pointer' }}>&larr; Back to Dashboard</button>
+    <div className="container" style={{ padding: '24px 16px', minHeight: '100vh', backgroundColor: 'var(--bg-dark)' }}>
+      <Navbar title="🚜 Farm Equipment Rental" showBack={true} onBack={onBack} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0 }}>Equipment Rental Near You</h1>
-        <button onClick={() => loadNearbyAgencies(false)} style={{ padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', background: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)', color: 'white', cursor: 'pointer', fontWeight: 600 }}>
-          Refresh Live Data
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <p style={{ color: '#a7f3d0', marginTop: 4, margin: 0 }}>{locationLabel || 'Detecting your farm coordinates...'}</p>
+        </div>
+        <button onClick={() => loadNearbyAgencies(false)} className="btn btn-primary" style={{ padding: '10px 18px' }}>
+          🔄 Refresh Live Feed
         </button>
       </div>
 
-      <p style={{ color: '#cbd5e1', marginTop: '10px' }}>{locationLabel || 'Detecting your location...'}</p>
-      <p style={{ color: '#94a3b8', marginBottom: '14px', fontSize: '13px' }}>
+      <p style={{ color: '#cbd5e1', marginBottom: '16px', fontSize: '13px' }}>
         Auto updates every 2 minutes{searchRadiusKm ? ` • Search radius: ${searchRadiusKm} km` : ''}{lastUpdated ? ` • Last updated: ${lastUpdated}` : ''}
       </p>
 
-      {loading && <p>Loading nearby agencies and equipment prices...</p>}
-      {error && <div className="card" style={{ borderLeft: '4px solid #ef4444' }}>{error}</div>}
+      {loading && (
+        <div className="card" style={{ textAlign: 'center', padding: '36px' }}>
+          <div className="spinner" style={{ borderColor: '#16a34a', borderTopColor: 'transparent' }}></div>
+          <p style={{ color: '#000000', fontWeight: 800 }}>Loading nearby equipment rental agencies...</p>
+        </div>
+      )}
+      
+      {error && <div className="card" style={{ background: '#fee2e2', border: '2px solid #ef4444', color: '#991b1b' }}>{error}</div>}
 
       {!loading && !error && agencies.length === 0 && (
         <div className="card">No nearby rental agencies found right now. Try again shortly.</div>
       )}
 
       {!loading && !error && agencies.map((agency) => (
-        <div key={agency.id} className="card" style={{ borderLeft: '4px solid #0ea5e9' }}>
-          <h3 style={{ margin: '0 0 8px 0', color: '#f8fafc' }}>{agency.name}</h3>
-          <p style={{ margin: '0 0 6px 0', color: '#cbd5e1' }}><strong>Phone:</strong> {agency.phone}</p>
-          <p style={{ margin: '0 0 6px 0', color: '#cbd5e1' }}><strong>Distance:</strong> {agency.distanceKm} km</p>
-          <p style={{ margin: '0 0 12px 0', color: '#94a3b8' }}>{agency.address}</p>
+        <div key={agency.id} className="card" style={{ borderLeft: '6px solid #16a34a' }}>
+          <h3 style={{ margin: '0 0 8px 0', color: '#000000', fontSize: 20, fontWeight: 900 }}>{agency.name}</h3>
+          <p style={{ margin: '0 0 6px 0', color: '#1f2937' }}><strong>Phone:</strong> {agency.phone}</p>
+          <p style={{ margin: '0 0 6px 0', color: '#1f2937' }}><strong>Distance:</strong> {agency.distanceKm} km</p>
+          <p style={{ margin: '0 0 14px 0', color: '#475569', fontWeight: 600 }}>{agency.address}</p>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+            <table>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1' }}>Equipment</th>
-                  <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1' }}>₹ / Hour</th>
-                  <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1' }}>₹ / Day</th>
+                  <th>Equipment</th>
+                  <th>₹ / Hour</th>
+                  <th>₹ / Day</th>
                 </tr>
               </thead>
               <tbody>
                 {(agency.equipments || []).map((item, idx) => (
                   <tr key={`${agency.id}-${idx}`}>
-                    <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#f8fafc' }}>{item.name}</td>
-                    <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#cbd5e1' }}>₹{item.pricePerHour}</td>
-                    <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#cbd5e1' }}>₹{item.pricePerDay}</td>
+                    <td style={{ fontWeight: 800 }}>{item.name}</td>
+                    <td style={{ fontWeight: 800, color: '#065f46' }}>₹{item.pricePerHour}</td>
+                    <td style={{ fontWeight: 800, color: '#065f46' }}>₹{item.pricePerDay}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div style={{ marginTop: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <a
               href={agency.mapUrl}
               target="_blank"
               rel="noreferrer"
-              style={{ display: 'inline-block', padding: '9px 14px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)', color: '#fff', textDecoration: 'none', fontWeight: 600, border: '1px solid rgba(255,255,255,0.2)' }}
+              className="btn btn-dark"
+              style={{ textDecoration: 'none', padding: '10px 18px', fontSize: 13 }}
             >
-              Open on Map
+              🗺️ Open in Google Maps
             </a>
-            <span style={{ marginLeft: '10px', color: '#94a3b8', fontSize: '12px' }}>Price source: {agency.priceSource || 'listed'}</span>
+            <span style={{ color: '#475569', fontSize: '12px', fontWeight: 700 }}>Price source: {agency.priceSource || 'listed catalog'}</span>
           </div>
         </div>
       ))}

@@ -1,14 +1,66 @@
 {
+  "81234567": {
+    "phone": "81234567",
+    "name": "Tan Ah Kow",
+    "village": "Tampines",
+    "countryType": "other",
+    "country": "Singapore",
+    "dialCode": "+65",
+    "state": "",
+    "pincode": "",
+    "district": "",
+    "password": "",
+    "createdAt": "2026-09-06T05:28:04.199Z"
+  },
   "7483960412": {
     "phone": "7483960412",
     "name": "Eshwar",
     "village": "Madikeri",
+    "password": "password123",
     "createdAt": "2026-02-03T06:50:14.171Z"
   },
   "7061418658": {
     "phone": "7061418658",
     "name": "Ashish",
     "village": "hennur",
+    "password": "password123",
     "createdAt": "2026-02-03T07:07:16.283Z"
+  },
+  "7816086663": {
+    "phone": "7816086663",
+    "name": "Greeshmanth",
+    "village": "Eluru",
+    "password": "farmerpassword123",
+    "createdAt": "2026-08-22T05:19:51.163Z",
+    "updatedAt": "2026-09-06T05:54:07.290Z",
+    "countryType": "india",
+    "country": "India",
+    "state": "ANDHRA PRADESH",
+    "pincode": "534001",
+    "district": "West Godavari",
+    "landholding": "4.5",
+    "primaryCrops": "Paddy, Cotton, Chilli"
+  },
+  "9876584181": {
+    "phone": "9876584181",
+    "name": "Gopi Krishna",
+    "village": "Vissannapeta",
+    "state": "ANDHRA PRADESH",
+    "pincode": "521211",
+    "district": "Krishna",
+    "password": "",
+    "createdAt": "2026-09-06T05:01:35.061Z"
+  },
+  "7778352791": {
+    "phone": "7778352791",
+    "name": "John Doe",
+    "village": "Fresno Valley",
+    "countryType": "other",
+    "country": "United States",
+    "state": "California",
+    "pincode": "",
+    "district": "",
+    "password": "",
+    "createdAt": "2026-09-06T05:16:12.712Z"
   }
 }

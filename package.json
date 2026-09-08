@@ -1,0 +1,13 @@
+{
+  "name": "krishi-net-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run start",
+    "start:backend": "npm --prefix backend run start",
+    "build:frontend": "npm --prefix frontend run build",
+    "install:all": "npm --prefix frontend install && npm --prefix backend install"
+  }
+}

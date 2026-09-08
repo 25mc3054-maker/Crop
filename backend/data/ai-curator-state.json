@@ -1,0 +1,281 @@
+{
+  "lastAuditTimestamp": "2026-09-06T11:13:07.664Z",
+  "auditCount": 25,
+  "auditLogs": [
+    {
+      "id": "AUDIT-1788693187696-441",
+      "timestamp": "2026-09-06T11:13:07.698Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788692287696-802",
+      "timestamp": "2026-09-06T10:58:07.697Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788691387715-435",
+      "timestamp": "2026-09-06T10:43:07.717Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788690487693-628",
+      "timestamp": "2026-09-06T10:28:07.693Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788689588641-163",
+      "timestamp": "2026-09-06T10:13:08.641Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788688677023-386",
+      "timestamp": "2026-09-06T09:57:57.024Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788687776972-620",
+      "timestamp": "2026-09-06T09:42:56.973Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788686081028-34",
+      "timestamp": "2026-09-06T09:14:41.028Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788684167008-771",
+      "timestamp": "2026-09-06T08:42:47.009Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788683267028-49",
+      "timestamp": "2026-09-06T08:27:47.029Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788682366998-916",
+      "timestamp": "2026-09-06T08:12:46.999Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788681466982-605",
+      "timestamp": "2026-09-06T07:57:46.983Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788680567009-130",
+      "timestamp": "2026-09-06T07:42:47.014Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788679666978-531",
+      "timestamp": "2026-09-06T07:27:46.979Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788678766963-19",
+      "timestamp": "2026-09-06T07:12:46.963Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788677866967-559",
+      "timestamp": "2026-09-06T06:57:46.967Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788676966930-943",
+      "timestamp": "2026-09-06T06:42:46.930Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788676529410-746",
+      "timestamp": "2026-09-06T06:35:29.410Z",
+      "type": "MANUAL_USER_TRIGGER",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788676067080-295",
+      "timestamp": "2026-09-06T06:27:47.080Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 12,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788674554936-576",
+      "timestamp": "2026-09-06T06:02:34.936Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788673133208-747",
+      "timestamp": "2026-09-06T05:38:53.208Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788602804072-979",
+      "timestamp": "2026-09-05T10:06:44.072Z",
+      "type": "MANUAL_USER_TRIGGER",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788601487904-216",
+      "timestamp": "2026-09-05T09:44:47.905Z",
+      "type": "AUTONOMOUS_SCHEDULED",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788600540890-163",
+      "timestamp": "2026-09-05T09:29:00.890Z",
+      "type": "MANUAL_USER_TRIGGER",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous background cycle executed: verified 2026 policy guidelines, interest subvention norms, and agricultural news dispatches."
+    },
+    {
+      "id": "AUDIT-1788599858382-706",
+      "timestamp": "2026-09-05T09:17:38.382Z",
+      "type": "INITIAL_AUDIT",
+      "schemesAudited": 16,
+      "schemesArchived": 3,
+      "schemesAdded": 5,
+      "loansAudited": 6,
+      "newsCurated": 5,
+      "summary": "Autonomous AI Curator Engine initialized: validated 11 active schemes, added 5 new 2026 schemes, archived 3 closed schemes, audited 6 loan lines, curated 5 agricultural bulletins."
+    }
+  ]
+}

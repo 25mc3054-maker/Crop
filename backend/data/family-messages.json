@@ -1,0 +1,23 @@
+{
+  "@dr_sharma__@kishan_lal": [
+    {
+      "id": "sys-1788685645236",
+      "sender": "system",
+      "text": "🎉 Dr. Sharma accepted Kishan Lal's request! You are now Krishi Family Members and can chat freely.",
+      "timestamp": "Just now",
+      "createdAt": "2026-09-06T09:07:25.236Z"
+    },
+    {
+      "id": "msg-1788685645392-ss4us",
+      "sender": "@kishan_lal",
+      "senderName": "Kishan Lal",
+      "senderAvatar": "",
+      "receiver": "@dr_sharma",
+      "text": "Namaste doctor, what is the best treatment for leaf curling in chilli?",
+      "image": null,
+      "timestamp": "02:37 pm",
+      "createdAt": "2026-09-06T09:07:25.247Z",
+      "seen": false
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "members": {
+    "@kishan_lal": [
+      "@dr_sharma"
+    ],
+    "@dr_sharma": [
+      "@kishan_lal"
+    ]
+  },
+  "requests": [
+    {
+      "id": "freq-1788685645174-7plkz",
+      "fromUser": {
+        "id": "user-1788685645175",
+        "name": "Kishan Lal",
+        "username": "@kishan_lal",
+        "avatar": "",
+        "badge": "🌾 Krishi Member",
+        "village": "",
+        "state": "India"
+      },
+      "toUser": {
+        "id": "user-1788685645175",
+        "name": "Dr. Sharma",
+        "username": "@dr_sharma",
+        "avatar": ""
+      },
+      "message": "🤝 I would like to add you to my Krishi Family so we can exchange direct messages and farming advice.",
+      "status": "accepted",
+      "createdAt": "2026-09-06T09:07:25.175Z",
+      "acceptedAt": "2026-09-06T09:07:25.234Z"
+    }
+  ]
+}

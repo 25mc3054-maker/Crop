@@ -1,21 +1,28 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from './config'
-
-const LABELS = {
-  hi: { title: 'कृषि-नेट AI सहायक', speak: 'बोलो', send: 'भेजें', thinking: 'सोच रहा हूँ...', placeholder: 'यहाँ अपना सवाल लिखें...' },
-  en: { title: 'Krishi-Net AI Assistant', speak: 'Speak', send: 'Send', thinking: 'Thinking...', placeholder: 'Type your question here...' }
-}
+import Navbar from './components/Navbar'
+import { REGIONAL_LANGUAGES, playDualVoice } from './languageHelper'
 
 export default function AIAssistant({ onBack }) {
-  const [lang, setLang] = useState('hi')
+  const [regLang, setRegLang] = useState(() => localStorage.getItem('krishi_secondary_lang') || 'none')
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef(null)
 
-  const l = LABELS[lang] || LABELS['en']
+  useEffect(() => {
+    const updateLang = () => setRegLang(localStorage.getItem('krishi_secondary_lang') || 'none')
+    window.addEventListener('krishi_lang_changed', updateLang)
+    window.addEventListener('storage', updateLang)
+    return () => {
+      window.removeEventListener('krishi_lang_changed', updateLang)
+      window.removeEventListener('storage', updateLang)
+    }
+  }, [])
+
+  const currentLangObj = REGIONAL_LANGUAGES.find(l => l.code === regLang) || REGIONAL_LANGUAGES[0]
 
   const sendMessage = async (text) => {
     if (!text.trim()) return
@@ -26,24 +33,13 @@ export default function AIAssistant({ onBack }) {
     setLoading(true)
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/llm`, { prompt: text, lang })
-      const botMsg = { role: 'assistant', content: res.data.output }
+      const res = await axios.post(`${API_BASE_URL}/llm`, { prompt: text, lang: regLang === 'none' ? 'en' : regLang })
+      const botOutput = res.data.output || 'I could not generate an answer.'
+      const botMsg = { role: 'assistant', content: botOutput }
       setMessages(prev => [...prev, botMsg])
 
-      // Try to play TTS
-      try {
-        const tts = await axios.post(`${API_BASE_URL}/tts`, { 
-          text: res.data.output, 
-          voice: 'Aditi', 
-          languageCode: 'hi-IN' 
-        })
-        if (tts.data.audioBase64) {
-          const audio = new Audio('data:audio/mp3;base64,' + tts.data.audioBase64)
-          audio.play()
-        }
-      } catch (e) {
-        console.error('TTS failed', e)
-      }
+      // Speak answer using sequential speech
+      playDualVoice(botOutput, regLang === 'none' ? '' : botOutput, regLang)
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I could not process your request.' }])
     } finally {
@@ -52,13 +48,14 @@ export default function AIAssistant({ onBack }) {
   }
 
   const startListening = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
       return alert('Voice recognition not supported in this browser')
     }
     
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     const recognition = new SpeechRecognition()
-    recognition.lang = lang === 'hi' ? 'hi-IN' : 'en-IN'
+    const langCodes = { te: 'te-IN', hi: 'hi-IN', kn: 'kn-IN', mr: 'mr-IN', ta: 'ta-IN', ml: 'ml-IN', bn: 'bn-IN', pa: 'pa-IN', gu: 'gu-IN', or: 'or-IN', as: 'as-IN', ur: 'ur-IN' }
+    recognition.lang = langCodes[regLang] || 'en-IN'
     recognition.interimResults = false
     
     recognition.onresult = (ev) => {
@@ -75,107 +72,72 @@ export default function AIAssistant({ onBack }) {
   }
 
   return (
-    <div style={{ maxWidth: '860px', margin: '0 auto', padding: '20px' }}>
-      <div style={{
-        background: 'rgba(255, 255, 255, 0.06)',
-        border: '1px solid rgba(255, 255, 255, 0.16)',
-        borderRadius: '20px',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        padding: '18px'
-      }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, color: '#f8fafc', fontSize: '34px', fontWeight: 700 }}>{l.title}</h2>
-        <button onClick={onBack} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px', cursor: 'pointer', fontWeight: 600 }}>
-          ← Back
-        </button>
-      </div>
+    <div className="container" style={{ padding: '24px 16px', minHeight: '100vh', backgroundColor: 'var(--bg-dark)' }}>
+      <Navbar title="🤖 AI Agronomy Specialist" showBack={true} onBack={onBack} />
 
-      <div style={{ marginBottom: '15px' }}>
-        <select value={lang} onChange={e => setLang(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(15, 23, 42, 0.7)', color: '#f8fafc', minWidth: '170px' }}>
-          <option value="hi">हिन्दी</option>
-          <option value="en">English</option>
-        </select>
-      </div>
-
-      <div style={{ 
-        background: 'rgba(15, 23, 42, 0.65)', 
-        border: '1px solid rgba(255,255,255,0.16)',
-        borderRadius: '14px', 
-        padding: '20px', 
-        minHeight: '400px', 
-        maxHeight: '500px', 
-        overflowY: 'auto',
-        marginBottom: '20px'
-      }}>
-        {messages.length === 0 && (
-          <p style={{ color: '#94a3b8', textAlign: 'center' }}>Ask me anything about farming!</p>
-        )}
-        {messages.map((msg, idx) => (
-          <div key={idx} style={{ 
-            marginBottom: '15px', 
-            padding: '12px', 
-            borderRadius: '12px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: msg.role === 'user' ? 'rgba(59,130,246,0.20)' : 'rgba(16,185,129,0.18)',
-            textAlign: msg.role === 'user' ? 'right' : 'left',
-            color: '#f8fafc'
-          }}>
-            <strong style={{ color: msg.role === 'user' ? '#93c5fd' : '#6ee7b7' }}>{msg.role === 'user' ? 'You:' : 'AI:'}</strong>
-            <p style={{ margin: '5px 0 0 0' }}>{msg.content}</p>
+      <div className="card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'inline-block', background: '#bbf7d0', color: '#000000', padding: '3px 8px', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', marginBottom: 6, border: '1px solid #16a34a' }}>
+              🤖 Generative Agronomy AI
+            </div>
+            <h2 style={{ margin: 0, color: '#000000', fontSize: '24px', fontWeight: 900 }}>
+              AI Agronomist {regLang !== 'none' ? `(${currentLangObj.name})` : ''}
+            </h2>
           </div>
-        ))}
-        {loading && <p style={{ color: '#94a3b8' }}>{l.thinking}</p>}
-      </div>
+        </div>
 
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <input 
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
-          placeholder={l.placeholder}
-          style={{ 
-            flex: 1, 
-            padding: '12px', 
-            border: '1px solid rgba(255,255,255,0.2)', 
-            borderRadius: '10px',
-            fontSize: '16px',
-            background: 'rgba(15, 23, 42, 0.7)',
-            color: '#f8fafc'
-          }}
-        />
-        <button 
-          onClick={() => sendMessage(input)}
-          disabled={loading || !input.trim()}
-          style={{ 
-            padding: '12px 24px', 
-            background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', 
-            color: 'white', 
-            border: '1px solid rgba(255,255,255,0.2)', 
-            borderRadius: '10px', 
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          {l.send}
-        </button>
-        <button 
-          onClick={startListening}
-          disabled={listening}
-          style={{ 
-            padding: '12px 24px', 
-            background: listening ? 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', 
-            color: 'white', 
-            border: '1px solid rgba(255,255,255,0.2)', 
-            borderRadius: '10px', 
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          {listening ? '🎤 Listening...' : '🎤 ' + l.speak}
-        </button>
-      </div>
+        {/* Message Log */}
+        <div style={{ minHeight: '320px', maxHeight: '460px', overflowY: 'auto', background: '#ffffff', border: '2px solid #16a34a', padding: '16px', marginBottom: '16px' }}>
+          {messages.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#475569' }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🌾</div>
+              <p style={{ color: '#000000', fontWeight: 800, fontSize: 16 }}>Ask questions regarding crop pests, fertilizers, soil management, or market timings.</p>
+            </div>
+          ) : (
+            messages.map((m, idx) => (
+              <div key={idx} style={{ marginBottom: 14, display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth: '80%',
+                  padding: '12px 16px',
+                  background: m.role === 'user' ? '#082d22' : '#e8f9ee',
+                  color: m.role === 'user' ? '#ffffff' : '#000000',
+                  border: m.role === 'user' ? '2px solid #000000' : '2px solid #16a34a',
+                  fontWeight: 600,
+                  fontSize: 14
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', marginBottom: 4, color: m.role === 'user' ? '#00eb78' : '#15803d' }}>
+                    {m.role === 'user' ? 'Farmer' : 'Krishi AI Specialist'}
+                  </div>
+                  {m.content}
+                </div>
+              </div>
+            ))
+          )}
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#15803d', fontWeight: 800, padding: '8px' }}>
+              <div className="spinner" style={{ width: 24, height: 24, margin: 0, borderWidth: 3 }}></div>
+              Thinking...
+            </div>
+          )}
+        </div>
+
+        {/* Input Controls */}
+        <form onSubmit={e => { e.preventDefault(); sendMessage(input); }} style={{ display: 'flex', gap: 10 }}>
+          <input
+            type="text"
+            placeholder="Type your agricultural question here..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            style={{ flex: 1, backgroundColor: '#ffffff', color: '#000000', border: '2px solid #16a34a' }}
+          />
+          <button type="button" onClick={startListening} className="btn btn-ghost" style={{ borderColor: '#000000', color: '#000000', padding: '12px 18px' }}>
+            {listening ? '🔴 Listening...' : '🎤 Speak'}
+          </button>
+          <button type="submit" disabled={loading || !input.trim()} className="btn btn-dark" style={{ padding: '12px 24px' }}>
+            Send →
+          </button>
+        </form>
       </div>
     </div>
   )
