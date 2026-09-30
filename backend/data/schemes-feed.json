@@ -23,9 +23,9 @@
     "status": "Active (Installments Disbursed Continuously)",
     "lifecycleStatus": "active",
     "validUntil": "Continuous / Open 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Central government confirmed ongoing quarterly DBT schedule with 100% Aadhaar-seeded validation.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pm-fasal-bima",
@@ -51,9 +51,9 @@
     "status": "Active (DigiClaim Instant Settlement Enabled)",
     "lifecycleStatus": "active",
     "validUntil": "Seasonal Cycle (Kharif & Rabi 2026)",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Portal operational with automated satellite and weather-station yield assessments.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "kcc-scheme",
@@ -80,9 +80,9 @@
     "status": "Active (Universal KCC Saturation Drive)",
     "lifecycleStatus": "active",
     "validUntil": "Continuous / Annual Renewal",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "RBI confirmed continuance of 3% prompt repayment incentive for FY 2025-26 with digital renewals.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pm-kusum",
@@ -109,9 +109,9 @@
     "status": "Active (Component C Feeder Solarization Open)",
     "lifecycleStatus": "active",
     "validUntil": "Extended through March 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "MNRE extended scheme budget and added dedicated feeder-level solarization allocations.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "aif-scheme",
@@ -137,9 +137,9 @@
     "status": "Active (₹1 Lakh Crore Financing Facility)",
     "lifecycleStatus": "active",
     "validUntil": "Active until FY 2032-33",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Government expanded eligible activities to include custom hiring centres and smart primary processing.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pmksy-per-drop",
@@ -166,9 +166,9 @@
     "status": "Active (Implemented via State Micro Irrigation Missions)",
     "lifecycleStatus": "active",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "State mission quotas updated for drip irrigation subsidies across Kharif and Rabi cycles.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pkvy-organic",
@@ -195,9 +195,9 @@
     "status": "Active (Jaivik Kheti Portal Linkages)",
     "lifecycleStatus": "active",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Direct marketing linkages active on Jaivik Kheti with streamlined PGS cluster approvals.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "soil-health-card",
@@ -222,9 +222,9 @@
     "status": "Active (Available at local KVKs & Rythu Bharosa Kendras)",
     "lifecycleStatus": "active",
     "validUntil": "Continuous / Open 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Village-level soil testing labs active with digital delivery of report cards directly to mobile.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "enam-mandi",
@@ -250,9 +250,9 @@
     "status": "Active (Live Trading across 1,400+ Mandis)",
     "lifecycleStatus": "active",
     "validUntil": "Continuous 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Inter-mandi and inter-state electronic trade volumes actively trading with digital escrows.",
-    "aiLastVerified": "2026-09-06T11:13:07.689Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pm-kmy-pension",
@@ -278,9 +278,9 @@
     "status": "Active (Enrollment via CSC & Portal)",
     "lifecycleStatus": "active",
     "validUntil": "Continuous 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "LIC fund management active with matching government contribution guaranteed.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "ahidf-dairy-poultry",
@@ -307,9 +307,9 @@
     "status": "Active (₹15,000 Crore Fund Envelope)",
     "lifecycleStatus": "active",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "AI Verified Active (04:43 pm)",
+    "aiAuditBadge": "AI Verified Active (11:31 pm)",
     "aiReason": "Cabinet extended AHIDF under Infrastructure Development Fund with updated credit guarantee limits.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pm-pranam-2026",
@@ -335,9 +335,9 @@
     "status": "⚡ NEWLY ADDED BY AI: Nationwide Rollout Active",
     "lifecycleStatus": "newly_added",
     "validUntil": "Active 2026-2027",
-    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (04:43 pm)",
+    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (11:31 pm)",
     "aiReason": "AI identified new notification issued under Union Fertilizer Policy 2025-26 promoting non-chemical inputs.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "smam-kisan-drone-2026",
@@ -364,9 +364,9 @@
     "status": "⚡ NEWLY ADDED BY AI: Drone Subsidies Open on DBT Portal",
     "lifecycleStatus": "newly_added",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (04:43 pm)",
+    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (11:31 pm)",
     "aiReason": "AI detected revised DBT drone mechanization subsidy guidelines published under SMAM portal.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "digital-agri-mission-2026",
@@ -392,9 +392,9 @@
     "status": "⚡ NEWLY ADDED BY AI: Pilot Scaling to 100+ Districts",
     "lifecycleStatus": "newly_added",
     "validUntil": "National Rollout 2026",
-    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (04:43 pm)",
+    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (11:31 pm)",
     "aiReason": "Cabinet approved Digital Agriculture Mission with ₹2,817 Crore outlay; integrated into national registry.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "pmmsy-fisheries-2026",
@@ -421,9 +421,9 @@
     "status": "⚡ NEWLY ADDED BY AI: Open for 2026 Approvals",
     "lifecycleStatus": "newly_added",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (04:43 pm)",
+    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (11:31 pm)",
     "aiReason": "State fisheries directorates opened fresh call for proposals under PMMSY FY 2025-26.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   },
   {
     "id": "namo-drone-didi-2026",
@@ -449,8 +449,8 @@
     "status": "⚡ NEWLY ADDED BY AI: Second Batch Selection Active",
     "lifecycleStatus": "newly_added",
     "validUntil": "Active 2026",
-    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (04:43 pm)",
+    "aiAuditBadge": "⚡ AI Added: New 2026 Scheme (11:31 pm)",
     "aiReason": "AI identified new application portal open across state rural livelihood missions for 2026.",
-    "aiLastVerified": "2026-09-06T11:13:07.690Z"
+    "aiLastVerified": "2026-09-29T18:01:21.804Z"
   }
 ]

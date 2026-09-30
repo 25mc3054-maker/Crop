@@ -97,10 +97,31 @@ const STATE_ALIAS_MAP = {
   'YAVATMAL': 'MAHARASHTRA'
 };
 
-// Fallback inference by Indian Postal 2-digit Circle/Zone prefix
+// Fallback inference by Indian Postal 2-digit / 3-digit Circle/Zone prefix
 function inferStateFromPincode(pincode) {
-  if (!pincode || pincode.length < 2) return null;
-  const prefix2 = parseInt(pincode.slice(0, 2), 10);
+  if (!pincode) return null;
+  const pinStr = String(pincode).trim();
+  if (pinStr.length < 2) return null;
+
+  if (pinStr.length >= 3) {
+    const p3 = pinStr.slice(0, 3);
+    if (p3 === '194') return 'LADAKH';
+    if (['246', '248', '249', '262', '263'].includes(p3)) return 'UTTARAKHAND';
+    if (p3 === '403') return 'GOA';
+    if (['605', '609'].includes(p3)) return 'PUDUCHERRY';
+    if (p3 === '682') return 'LAKSHADWEEP';
+    if (p3 === '737') return 'SIKKIM';
+    if (p3 === '744') return 'ANDAMAN & NICOBAR ISLANDS';
+    if (['790', '791', '792'].includes(p3)) return 'ARUNACHAL PRADESH';
+    if (['793', '794'].includes(p3)) return 'MEGHALAYA';
+    if (p3 === '795') return 'MANIPUR';
+    if (p3 === '796') return 'MIZORAM';
+    if (['797', '798'].includes(p3)) return 'NAGALAND';
+    if (p3 === '799') return 'TRIPURA';
+    if (p3 === '396') return 'DADRA & NAGAR HAVELI AND DAMAN & DIU';
+  }
+
+  const prefix2 = parseInt(pinStr.slice(0, 2), 10);
   if (prefix2 === 11) return 'DELHI';
   if (prefix2 >= 12 && prefix2 <= 13) return 'HARYANA';
   if (prefix2 >= 14 && prefix2 <= 15) return 'PUNJAB';
@@ -108,24 +129,21 @@ function inferStateFromPincode(pincode) {
   if (prefix2 === 17) return 'HIMACHAL PRADESH';
   if (prefix2 >= 18 && prefix2 <= 19) return 'JAMMU & KASHMIR';
   if (prefix2 >= 20 && prefix2 <= 28) return 'UTTAR PRADESH';
-  if (prefix2 === 24 || prefix2 === 26) return 'UTTARAKHAND';
   if (prefix2 >= 30 && prefix2 <= 34) return 'RAJASTHAN';
   if (prefix2 >= 36 && prefix2 <= 39) return 'GUJARAT';
   if (prefix2 >= 40 && prefix2 <= 44) return 'MAHARASHTRA';
-  if (prefix2 === 40) return 'GOA';
   if (prefix2 >= 45 && prefix2 <= 48) return 'MADHYA PRADESH';
   if (prefix2 === 49) return 'CHHATTISGARH';
-  if (prefix2 >= 50 && prefix2 <= 53) return 'ANDHRA PRADESH';
-  if (prefix2 >= 50 && prefix2 <= 50) return 'TELANGANA';
+  if (prefix2 === 50) return 'TELANGANA';
+  if (prefix2 >= 51 && prefix2 <= 53) return 'ANDHRA PRADESH';
   if (prefix2 >= 56 && prefix2 <= 59) return 'KARNATAKA';
   if (prefix2 >= 60 && prefix2 <= 64) return 'TAMIL NADU';
   if (prefix2 >= 67 && prefix2 <= 69) return 'KERALA';
   if (prefix2 >= 70 && prefix2 <= 74) return 'WEST BENGAL';
   if (prefix2 >= 75 && prefix2 <= 77) return 'ODISHA';
   if (prefix2 === 78) return 'ASSAM';
-  if (prefix2 === 79) return 'ARUNACHAL PRADESH';
+  if (prefix2 === 79) return 'ASSAM';
   if (prefix2 >= 80 && prefix2 <= 85) return 'BIHAR';
-  if (prefix2 >= 81 && prefix2 <= 83) return 'JHARKHAND';
   return null;
 }
 

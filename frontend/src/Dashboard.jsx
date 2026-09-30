@@ -5,8 +5,11 @@ import { preloadDashboardData } from './livePreload'
 import { REGIONAL_LANGUAGES, DUAL_DICTIONARY, getDualCropName, UI_LANG_STRINGS, playDualVoice } from './languageHelper'
 import Navbar from './components/Navbar'
 import { MiniPriceSparkline } from './components/MarketPrices'
+import KrishiSuperApp from './components/KrishiSuperApp'
 
 import { COUNTRIES_LIST } from './countriesData'
+import { validateStateAndPincodeClientSide } from './pincodeUtils'
+import { getCurrentFarmerUser, saveFarmerUserSession, clearFarmerUserSession } from './userSession'
 
 // Standard fallback list of Indian States & Union Territories
 const FALLBACK_INDIAN_STATES = [
@@ -39,9 +42,10 @@ const DEFAULT_BENCHMARK_RATES = [
 ]
 
 export default function Dashboard({ onLogout, initialOpenSettings = false }) {
+  const currentUser = getCurrentFarmerUser()
   const [prices, setPrices] = useState(DEFAULT_BENCHMARK_RATES)
   const [loading, setLoading] = useState(false)
-  const [userName, setUserName] = useState('Greeshmanth')
+  const [userName, setUserName] = useState(() => currentUser.name)
   const [regLang, setRegLang] = useState(() => localStorage.getItem('krishi_secondary_lang') || 'none')
   const [showDigiLocker, setShowDigiLocker] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -55,11 +59,11 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
   })
 
   // Settings LinkedIn / Instagram Navigation State
-  const [settingsSubView, setSettingsSubView] = useState(null) // null for main categorized menu, or 'profile', 'language', 'phone', 'password', 'location', 'notifications', 'delete'
+  const [settingsSubView, setSettingsSubView] = useState(null)
   const [langSearch, setLangSearch] = useState('')
 
   // 1. Phone state
-  const [currentPhone, setCurrentPhone] = useState(() => localStorage.getItem('farmer_phone') || '')
+  const [currentPhone, setCurrentPhone] = useState(() => currentUser.phone || '')
   const [newPhone, setNewPhone] = useState('')
   const [phoneMsg, setPhoneMsg] = useState({ error: '', success: '', loading: false })
 
@@ -70,19 +74,19 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
   const [passMsg, setPassMsg] = useState({ error: '', success: '', loading: false })
 
   // 3. Location / State & Pincode state
-  const [settingsCountryType, setSettingsCountryType] = useState(() => localStorage.getItem('farmer_country_type') || 'india')
-  const [settingsCountryName, setSettingsCountryName] = useState(() => localStorage.getItem('farmer_country') || 'India')
-  const [settingsState, setSettingsState] = useState(() => localStorage.getItem('farmer_state') || 'ANDHRA PRADESH')
-  const [settingsPincode, setSettingsPincode] = useState(() => localStorage.getItem('farmer_pincode') || '534001')
-  const [settingsVillage, setSettingsVillage] = useState(() => localStorage.getItem('farmer_village') || '')
+  const [settingsCountryType, setSettingsCountryType] = useState(() => currentUser.countryType || 'india')
+  const [settingsCountryName, setSettingsCountryName] = useState(() => currentUser.country || 'India')
+  const [settingsState, setSettingsState] = useState(() => currentUser.state || 'KARNATAKA')
+  const [settingsPincode, setSettingsPincode] = useState(() => currentUser.pincode || '')
+  const [settingsVillage, setSettingsVillage] = useState(() => currentUser.village || '')
   const [pincodeCheck, setPincodeCheck] = useState({ checking: false, valid: null, message: '', district: '' })
   const [locationMsg, setLocationMsg] = useState({ error: '', success: '', loading: false })
 
   // 4. Farmer profile state
-  const [profileName, setProfileName] = useState(() => userName)
-  const [profileVillage, setProfileVillage] = useState(() => localStorage.getItem('farmer_village') || 'Eluru')
-  const [profileLand, setProfileLand] = useState(() => localStorage.getItem('farmer_land') || '3.5')
-  const [profileCrops, setProfileCrops] = useState(() => localStorage.getItem('farmer_crops') || 'Paddy, Cotton, Chilli')
+  const [profileName, setProfileName] = useState(() => currentUser.name)
+  const [profileVillage, setProfileVillage] = useState(() => currentUser.village)
+  const [profileLand, setProfileLand] = useState(() => currentUser.land)
+  const [profileCrops, setProfileCrops] = useState(() => currentUser.crops)
   const [profileMsg, setProfileMsg] = useState({ error: '', success: '', loading: false })
 
   // 5. Notification preferences state
@@ -99,16 +103,31 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
   const currentLangObj = REGIONAL_LANGUAGES.find(l => l.code === regLang) || REGIONAL_LANGUAGES[0]
   const currentStr = UI_LANG_STRINGS[regLang] || UI_LANG_STRINGS.none
 
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem('farmer_token')
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        setUserName(payload.name || payload.phone || 'Greeshmanth')
-      }
-    } catch (e) {
-      console.error('Failed to decode token', e)
+  const handleLogout = () => {
+    clearFarmerUserSession()
+    if (onLogout) {
+      onLogout()
+    } else {
+      window.location.reload()
     }
+  }
+
+  useEffect(() => {
+    const handleSync = () => {
+      const u = getCurrentFarmerUser()
+      setUserName(u.name)
+      setCurrentPhone(u.phone)
+      setProfileName(u.name)
+      setProfileVillage(u.village)
+      setProfileLand(u.land)
+      setProfileCrops(u.crops)
+      setSettingsState(u.state)
+      setSettingsPincode(u.pincode)
+      setSettingsVillage(u.village)
+    }
+    window.addEventListener('krishi_user_session_changed', handleSync)
+    window.addEventListener('storage', handleSync)
+
 
     const updateLang = () => {
       setRegLang(localStorage.getItem('krishi_secondary_lang') || 'none')
@@ -167,7 +186,26 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
     }
     const clean = String(settingsPincode || '').replace(/\D/g, '')
     if (clean.length === 6) {
-      setPincodeCheck({ checking: true, valid: null, message: 'Verifying PIN code...', district: '' })
+      const clientCheck = validateStateAndPincodeClientSide(settingsState, clean)
+      if (!clientCheck.match) {
+        setPincodeCheck({
+          checking: false,
+          valid: false,
+          message: clientCheck.error || `⚠️ PIN code ${clean} does not match ${settingsState}`,
+          district: ''
+        })
+        return
+      }
+
+      // Optimistically valid based on postal circle
+      setPincodeCheck({
+        checking: false,
+        valid: true,
+        message: `✓ Valid Postal Code: ${settingsState}`,
+        district: clientCheck.district || ''
+      })
+
+      // Query backend for full district/post offices
       axios.get(`${API_BASE_URL}/api/pincode/validate`, {
         params: { state: settingsState, pincode: clean }
       })
@@ -176,10 +214,10 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
           setPincodeCheck({
             checking: false,
             valid: true,
-            message: `✓ Valid PIN Code: ${res.data.district || ''}, ${res.data.state || settingsState}`,
+            message: `✓ Valid PIN Code: ${res.data.district || 'Verified Area'}, ${res.data.state || settingsState}`,
             district: res.data.district || ''
           })
-        } else {
+        } else if (res.data && res.data.match === false) {
           setPincodeCheck({
             checking: false,
             valid: false,
@@ -189,7 +227,13 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
         }
       })
       .catch(() => {
-        setPincodeCheck({ checking: false, valid: true, message: '✓ PIN code entered (standard directory)', district: '' })
+        // Retain client-side verification
+        setPincodeCheck({
+          checking: false,
+          valid: true,
+          message: `✓ Valid PIN Code: ${clientCheck.district || settingsState}`,
+          district: clientCheck.district || ''
+        })
       })
     } else {
       setPincodeCheck({ checking: false, valid: null, message: '', district: '' })
@@ -276,12 +320,13 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
         village: settingsVillage
       })
       if (res.data.success) {
-        localStorage.setItem('farmer_country_type', settingsCountryType)
-        localStorage.setItem('farmer_country', isOther ? settingsCountryName : 'India')
-        localStorage.setItem('farmer_state', isOther ? '' : settingsState)
-        localStorage.setItem('farmer_pincode', isOther ? '' : settingsPincode)
-        if (settingsVillage) localStorage.setItem('farmer_village', settingsVillage)
-        if (res.data.token) localStorage.setItem('farmer_token', res.data.token)
+        saveFarmerUserSession(res.data.user || {
+          countryType: settingsCountryType,
+          country: isOther ? settingsCountryName : 'India',
+          state: isOther ? '' : settingsState,
+          pincode: isOther ? '' : settingsPincode,
+          village: settingsVillage
+        }, res.data.token)
         setLocationMsg({ error: '', success: 'Location & PIN code preferences updated successfully!', loading: false })
       } else {
         setLocationMsg({ error: res.data.error || 'Failed to update location', success: '', loading: false })
@@ -305,11 +350,12 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
       })
       if (res.data.success) {
         setUserName(profileName)
-        localStorage.setItem('farmer_name', profileName)
-        localStorage.setItem('farmer_village', profileVillage)
-        localStorage.setItem('farmer_land', profileLand)
-        localStorage.setItem('farmer_crops', profileCrops)
-        if (res.data.token) localStorage.setItem('farmer_token', res.data.token)
+        saveFarmerUserSession(res.data.user || {
+          name: profileName,
+          village: profileVillage,
+          landholding: profileLand,
+          primaryCrops: profileCrops
+        }, res.data.token)
         setProfileMsg({ error: '', success: 'Profile details saved successfully!', loading: false })
       } else {
         setProfileMsg({ error: res.data.error || 'Failed to update profile', success: '', loading: false })
@@ -410,12 +456,6 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('farmer_token')
-    localStorage.removeItem('krishi_lang_chosen')
-    onLogout && onLogout()
-  }
-
   // 12 Agricultural Operating Modules matching the sketch
   const operatingModules = [
     { k: '#/soil-analyser', icon: '🌱', title: 'Soil Health & NPK Diagnosis', desc: 'Instant lab-grade soil macro-nutrient analysis & customized fertilizer dosage', tag: 'NPK CLINIC' },
@@ -433,7 +473,15 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
   ]
 
   return (
-    <div style={{ minHeight: '100vh', padding: '12px 14px 40px', backgroundColor: 'var(--bg-page)', color: 'var(--text-main)' }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+      <KrishiSuperApp 
+        onLogout={handleLogout}
+        onOpenSettings={() => {
+          setSettingsSubView(null)
+          setShowSettingsModal(true)
+        }}
+      />
+      {false && (
       <div className="container">
         
         {/* TOP HEADER + SEGMENTED NAVIGATION ROW (Square boxes / sharp edges) */}
@@ -1198,6 +1246,7 @@ export default function Dashboard({ onLogout, initialOpenSettings = false }) {
         </div>
 
       </div>
+      )}
 
       {/* DIGILOCKER VAULT MODAL (Sharp Square Box) */}
       {showDigiLocker && (

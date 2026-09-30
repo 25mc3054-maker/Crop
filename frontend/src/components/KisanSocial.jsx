@@ -4,6 +4,12 @@ import { API_BASE_URL } from '../config'
 import DiscussionDrawer, { countTotalComments } from './DiscussionDrawer'
 import VibesFeed from './VibesFeed'
 import MusicPickerModal from './MusicPickerModal'
+import Navbar from './Navbar'
+import CreatePostModal from './CreatePostModal'
+import UnifiedSettingsModal from './UnifiedSettingsModal'
+import DigiLockerPortal from './DigiLockerPortal'
+import AgriMarketplaceFeed from './AgriMarketplaceFeed'
+import FamilyNetworkingFeed from './FamilyNetworkingFeed'
 import {
   IconLogo,
   IconSearch,
@@ -69,20 +75,20 @@ import {
 const CATEGORIES = [
   { id: 'all', label: 'All Updates', Icon: IconPosts },
   { id: 'Crop Care', label: 'Crop Care', Icon: IconLeaf },
-  { id: 'Mandi Rates', label: 'Mandi Rates', Icon: IconMarket },
+  { id: 'Pest Control', label: 'Pest Control', Icon: IconBug },
   { id: 'Organic Farming', label: 'Organic Farming', Icon: IconSprout },
+  { id: 'Drip Irrigation', label: 'Drip Irrigation', Icon: IconDroplets },
+  { id: 'Mandi Rates', label: 'Mandi Rates', Icon: IconMarket },
   { id: 'Machinery & Tools', label: 'Machinery & Tools', Icon: IconTractor },
-  { id: 'Weather & Climate', label: 'Weather & Climate', Icon: IconWeather },
-  { id: 'Govt Schemes & Subsidies', label: 'Govt Schemes & Subsidies', Icon: IconScheme },
-  { id: 'Soil Health & Testing', label: 'Soil Health & Testing', Icon: IconSoil },
-  { id: 'Irrigation & Water Mgmt', label: 'Irrigation & Water Mgmt', Icon: IconDroplets },
-  { id: 'Horticulture & Fruits', label: 'Horticulture & Fruits', Icon: IconFruit },
+  { id: 'Weather Advisory', label: 'Weather Advisory', Icon: IconWeather },
+  { id: 'Govt Subsidies', label: 'Govt Subsidies', Icon: IconScheme },
+  { id: 'Soil Health', label: 'Soil Health', Icon: IconSoil },
+  { id: 'Horticulture', label: 'Horticulture', Icon: IconFruit },
   { id: 'Dairy & Livestock', label: 'Dairy & Livestock', Icon: IconCow },
-  { id: 'Pest & Weed Control', label: 'Pest & Weed Control', Icon: IconBug },
-  { id: 'Seeds & Fertilizers', label: 'Seeds & Fertilizers', Icon: IconLeaf },
-  { id: 'Post-Harvest & Storage', label: 'Post-Harvest & Storage', Icon: IconWarehouse },
-  { id: 'Agri-Tech & Drones', label: 'Agri-Tech & Drones', Icon: IconDrone },
-  { id: 'Floriculture & Sericulture', label: 'Floriculture & Sericulture', Icon: IconFlower }
+  { id: 'Seed Varieties', label: 'Seed Varieties', Icon: IconLeaf },
+  { id: 'Post-Harvest Storage', label: 'Post-Harvest Storage', Icon: IconWarehouse },
+  { id: 'Solar Pumps', label: 'Solar Pumps', Icon: IconDrone },
+  { id: 'Agri-Finance', label: 'Agri-Finance', Icon: IconScheme }
 ]
 
 // Curated Public Music & Movie Tracks Library for Agricultural Videos & Posts
@@ -736,6 +742,7 @@ export default function KisanSocial({ onBack }) {
   const activeSideCommentPost = posts.find(p => p.id === activeSideCommentPostId) || null
 
   // Modals & Menu State
+  const [showMasterSettingsModal, setShowMasterSettingsModal] = useState(false)
   const [showCreatePostModal, setShowCreatePostModal] = useState(false)
   const [showFieldmatesModal, setShowFieldmatesModal] = useState(false)
   const [fieldmatesModalUser, setFieldmatesModalUser] = useState(null)
@@ -803,6 +810,18 @@ export default function KisanSocial({ onBack }) {
   useEffect(() => {
     localStorage.setItem('krishi_data_saver_v5', dataSaverMode ? 'true' : 'false')
   }, [dataSaverMode])
+
+  // Bug Fix: Lock background body scroll when Create Post modal is open
+  useEffect(() => {
+    if (showCreatePostModal) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [showCreatePostModal])
 
   // Reset comment input state whenever active comment post changes (Fixes comment bleeding)
   useEffect(() => {
@@ -1317,231 +1336,40 @@ export default function KisanSocial({ onBack }) {
   }
 
   return (
-    <div style={{ background: '#ffffff', minHeight: '100vh', color: '#09090b', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+    <div style={{ background: '#ffffff', minHeight: '100vh', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', color: '#09090b', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
       
-      {/* 1. TOP GLOBAL NAVIGATION */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        background: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '10px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {onBack && (
-            <button
-              onClick={onBack}
-              style={{
-                background: '#f0fdf4',
-                border: 'none',
-                color: '#166534',
-                padding: '8px 12px',
-                borderRadius: 8,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontWeight: 700,
-                fontSize: 13
-              }}
-            >
-              <IconArrowLeft size={16} />
-              <span>Back</span>
-            </button>
-          )}
-
-          <div 
-            onClick={() => handleTabSwitch('feed', null)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-          >
-            <IconLogo size={32} color="#16a34a" />
-            <div>
-              <span style={{ fontSize: 18, fontWeight: 900, color: '#09090b', letterSpacing: '-0.5px' }}>
-                Krishi<span style={{ color: '#16a34a' }}>Social</span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Center Primary Tab Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', padding: 4, borderRadius: 10 }}>
-          <button
-            onClick={() => handleTabSwitch('feed', null)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'feed' && !selectedProfileUser ? '#16a34a' : 'transparent',
-              color: activeTab === 'feed' && !selectedProfileUser ? '#ffffff' : '#09090b',
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <IconHome size={18} active={activeTab === 'feed' && !selectedProfileUser} />
-            <span>Posts</span>
-          </button>
-
-          <button
-            onClick={() => handleTabSwitch('fieldVibes', null)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'fieldVibes' && !selectedProfileUser ? '#16a34a' : 'transparent',
-              color: activeTab === 'fieldVibes' && !selectedProfileUser ? '#ffffff' : '#09090b',
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <IconFieldVibes size={18} active={activeTab === 'fieldVibes' && !selectedProfileUser} />
-            <span>fieldVibes</span>
-          </button>
-
-          <button
-            onClick={() => handleTabSwitch('search', null)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'search' && !selectedProfileUser ? '#16a34a' : 'transparent',
-              color: activeTab === 'search' && !selectedProfileUser ? '#ffffff' : '#09090b',
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <IconSearch size={18} color={activeTab === 'search' && !selectedProfileUser ? '#ffffff' : '#09090b'} />
-            <span>Explore</span>
-          </button>
-
-          <button
-            onClick={() => handleTabSwitch('messages', null)}
-            style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'messages' ? '#16a34a' : 'transparent',
-              color: activeTab === 'messages' ? '#ffffff' : '#09090b',
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <IconPaperPlane size={18} />
-            <span>Messages</span>
-            {messageRequests.length > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: -2,
-                right: -2,
-                background: '#16a34a',
-                color: '#ffffff',
-                fontSize: 10,
-                fontWeight: 900,
-                width: 18,
-                height: 18,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {messageRequests.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Right User & Settings */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            onClick={() => setShowCreatePostModal(true)}
-            style={{
-              background: '#16a34a',
-              color: '#ffffff',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: 8,
-              fontWeight: 800,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(22, 163, 74, 0.2)'
-            }}
-          >
-            <IconPlus size={16} color="#ffffff" strokeWidth={3} />
-            <span>Create</span>
-          </button>
-
-          <button
-            onClick={() => handleTabSwitch('settings', null)}
-            title="Privacy & Settings"
-            style={{
-              background: activeTab === 'settings' ? '#dcfce7' : '#f8fafc',
-              border: 'none',
-              color: '#09090b',
-              width: 38,
-              height: 38,
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <IconSettings size={18} />
-          </button>
-
-          {/* Current User Avatar */}
-          <div
-            onClick={() => handleTabSwitch('profile', null)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-          >
-            <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: isProfileInMyCircle ? '3px solid #f97316' : 'none'
-              }}
-            />
-          </div>
-        </div>
-      </header>
+      {/* 1. TOP GLOBAL NAVIGATION & SEARCH BAR */}
+      <Navbar
+        activeTab={activeTab === 'feed' ? 'posts' : activeTab === 'fieldVibes' ? 'vibes' : activeTab}
+        onTabChange={(tab) => {
+          if (tab === 'posts') handleTabSwitch('feed', null)
+          else if (tab === 'vibes') handleTabSwitch('fieldVibes', null)
+          else handleTabSwitch(tab, null)
+        }}
+        onOpenCreatePost={() => setShowCreatePostModal(true)}
+        setIsCreateModalOpen={setShowCreatePostModal}
+        unreadChatCount={Object.keys(chatThreads).length}
+        unreadNotifCount={pendingFieldmateRequests.length}
+        onOpenChat={() => handleTabSwitch('messages', null)}
+        onOpenNotifications={() => handleTabSwitch('notifications', null)}
+        onOpenSettings={() => setShowMasterSettingsModal(true)}
+        onOpenProfile={() => handleTabSwitch('profile', null)}
+        currentUser={{
+          name: currentUser.name,
+          handle: currentUser.username,
+          avatar: currentUser.avatar,
+          isMyCircle: isProfileInMyCircle,
+          verified: hasGreenTick
+        }}
+        searchQuery={locationSearchFilter}
+        onSearchChange={setLocationSearchFilter}
+      />
 
       {/* 2. MAIN CONTAINER LAYOUT */}
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px', display: 'flex', gap: 24, position: 'relative' }}>
+      <div style={{ maxWidth: 1280, width: '100%', margin: '0 auto', padding: '16px 16px 0', display: 'flex', gap: 24, position: 'relative', flex: 1, overflow: 'hidden', height: 'calc(100vh - 64px)' }}>
         
         {/* LEFT COLUMN / FEED / PROFILE CONTENT */}
-        <main style={{ flex: 1, minWidth: 0 }}>
+        <main style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', scrollbarWidth: 'none', paddingBottom: 60 }} className="scrollbar-none">
           
           {/* ================================================================ */}
           {/* VIEW: FIELDVIBES VERTICAL SNAP-SCROLL VIDEO REELS */}
@@ -2856,6 +2684,53 @@ export default function KisanSocial({ onBack }) {
             </div>
           )}
 
+          {/* ================================================================ */}
+          {/* VIEW: AGRI-MARKETPLACE ("BUY" TAB) */}
+          {/* ================================================================ */}
+          {activeTab === 'marketplace' && (
+            <AgriMarketplaceFeed
+              currentUser={currentUser}
+              myCircleList={myCircleList}
+              onDirectChatWithSeller={(seller) => {
+                setActiveChatRecipient(seller.handle)
+                handleTabSwitch('messages', null)
+              }}
+            />
+          )}
+
+          {/* ================================================================ */}
+          {/* VIEW: FAMILY NETWORKING FEED */}
+          {/* ================================================================ */}
+          {activeTab === 'family' && (
+            <FamilyNetworkingFeed
+              currentUser={currentUser}
+              myCircleList={myCircleList}
+              onToggleMyCircle={handleToggleMyCircle}
+              isNotificationsView={false}
+            />
+          )}
+
+          {/* ================================================================ */}
+          {/* VIEW: NOTIFICATIONS TAB */}
+          {/* ================================================================ */}
+          {activeTab === 'notifications' && (
+            <FamilyNetworkingFeed
+              currentUser={currentUser}
+              myCircleList={myCircleList}
+              onToggleMyCircle={handleToggleMyCircle}
+              isNotificationsView={true}
+            />
+          )}
+
+          {/* ================================================================ */}
+          {/* VIEW: DIGILOCKER & DIRECT GOVERNMENT SCHEMES PORTAL */}
+          {/* ================================================================ */}
+          {activeTab === 'digilocker' && (
+            <DigiLockerSchemesPortal
+              currentUser={currentUser}
+            />
+          )}
+
         </main>
 
         {/* ================================================================ */}
@@ -2879,269 +2754,17 @@ export default function KisanSocial({ onBack }) {
       {/* ================================================================ */}
       {/* MODAL 1: CREATE POST / FIELDVIBE */}
       {/* ================================================================ */}
-      {showCreatePostModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 16
-        }}>
-          <div style={{
-            background: '#ffffff',
-            borderRadius: 16,
-            maxWidth: 540,
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-          }}>
-            {/* Modal Header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 900 }}>Create New Update</h3>
-              <button
-                onClick={() => setShowCreatePostModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
-                <IconClose size={20} />
-              </button>
-            </div>
-
-            {/* Modal Form */}
-            <form onSubmit={handleCreatePostSubmit} style={{ padding: 20 }}>
-              
-              {/* Content Type Selector (Post vs fieldVibe) */}
-              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-                <button
-                  type="button"
-                  onClick={() => { setNewPostType('post'); setNewPostVideoDuration(null) }}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    border: newPostType === 'post' ? '2px solid #16a34a' : '1px solid #cbd5e1',
-                    background: newPostType === 'post' ? '#dcfce7' : '#ffffff',
-                    color: newPostType === 'post' ? '#166534' : '#09090b',
-                    fontWeight: 800,
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <IconPosts size={16} />
-                  <span>Standard Post (Video ≤ 10m)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setNewPostType('fieldVibe'); setNewPostVideoDuration(null) }}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    border: newPostType === 'fieldVibe' ? '2px solid #16a34a' : '1px solid #cbd5e1',
-                    background: newPostType === 'fieldVibe' ? '#dcfce7' : '#ffffff',
-                    color: newPostType === 'fieldVibe' ? '#166534' : '#09090b',
-                    fontWeight: 800,
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <IconFieldVibes size={16} />
-                  <span>fieldVibe (Video ≤ 1m)</span>
-                </button>
-              </div>
-
-              {/* PROMPT 1: 15 Agricultural Categories Dropdown */}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#09090b', marginBottom: 6 }}>
-                  Select Category (15 Domains) *
-                </label>
-                <select
-                  value={newPostCategory}
-                  onChange={(e) => setNewPostCategory(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1.5px solid #16a34a',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    color: '#166534',
-                    background: '#f0fdf4',
-                    outline: 'none'
-                  }}
-                >
-                  {CATEGORIES.filter(c => c.id !== 'all').map(c => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* PROMPT 2: Simple Free-Text Location / District Input */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#09090b', marginBottom: 6 }}>
-                  Location / District (Free-Text Input)
-                </label>
-                <input
-                  type="text"
-                  value={newPostLocation}
-                  onChange={(e) => setNewPostLocation(e.target.value)}
-                  placeholder="e.g. Tenali, Guntur, AP or Khanna, Ludhiana..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1px solid #cbd5e1',
-                    fontSize: 13.5,
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {/* Audio / Music Overlay Tool (For both Posts and fieldVibes) */}
-              <div style={{ marginBottom: 16, background: '#f8fafc', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <IconMusic size={16} color="#16a34a" />
-                    <span style={{ fontSize: 13, fontWeight: 800, color: '#09090b' }}>
-                      {newPostType === 'fieldVibe' ? 'Audio Track (Required)' : 'Music Overlay (Optional)'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMusicPickerModal(true)}
-                    style={{
-                      background: '#16a34a',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {newPostAttachedMusic ? 'Change Track' : '+ Browse Songs'}
-                  </button>
-                </div>
-
-                {newPostAttachedMusic ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <IconMusic size={14} color="#16a34a" />
-                      <span>{newPostAttachedMusic.title} ({newPostAttachedMusic.artist})</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setNewPostAttachedMusic(null)}
-                      style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
-                    Choose movie songs, folk rhythms, or private audio tracks to overlay on your content.
-                  </div>
-                )}
-              </div>
-
-              {/* Post Description Input */}
-              <div style={{ marginBottom: 16 }}>
-                <textarea
-                  rows={4}
-                  value={newPostContent}
-                  onChange={(e) => setNewPostContent(e.target.value)}
-                  placeholder="Share insights, farming observations, or field techniques..."
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: 8,
-                    border: '1px solid #cbd5e1',
-                    fontSize: 14,
-                    outline: 'none',
-                    resize: 'vertical',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {/* Photo / Video Media Attachment with Strict Duration Check */}
-              <div style={{ marginBottom: 20 }}>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*,video/*"
-                  onChange={handleMediaFileSelection}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: 8,
-                    border: '1px dashed #16a34a',
-                    background: '#f0fdf4',
-                    color: '#166534',
-                    fontWeight: 800,
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <IconImage size={18} color="#16a34a" />
-                  <span>{newPostImagePreview ? 'Change Media File' : `Attach Photo or Video (Max ${newPostType === 'fieldVibe' ? '1 min' : '10 min'})`}</span>
-                </button>
-
-                {newPostImagePreview && (
-                  <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
-                    <img src={newPostImagePreview} alt="Preview" style={{ width: '100%', maxHeight: 180, objectFit: 'cover' }} />
-                    {newPostVideoDuration && (
-                      <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.7)', color: '#ffffff', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                        Duration: {newPostVideoDuration}s
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Submit CTA */}
-              <button
-                type="submit"
-                style={{
-                  width: '100%',
-                  background: '#16a34a',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '12px',
-                  borderRadius: 8,
-                  fontWeight: 900,
-                  fontSize: 14,
-                  cursor: 'pointer'
-                }}
-              >
-                Publish to Krishi Community
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreatePostModal
+        isOpen={showCreatePostModal}
+        onClose={() => setShowCreatePostModal(false)}
+        currentUser={currentUser}
+        onCreatePost={(newPost) => {
+          setPosts(prev => [newPost, ...prev])
+          if (newPost.contentType === 'fieldVibe') {
+            handleTabSwitch('fieldVibes', null)
+          }
+        }}
+      />
 
       {/* ================================================================ */}
       {/* MODAL: MUSIC & MOVIE SONGS LIBRARY SELECTOR (iTunes API) */}
@@ -3469,6 +3092,20 @@ export default function KisanSocial({ onBack }) {
           </div>
         </div>
       )}
+
+      {/* ================================================================ */}
+      {/* MODAL: UNIFIED MASTER SETTINGS HUB */}
+      {/* ================================================================ */}
+      <UnifiedSettingsModal
+        isOpen={showMasterSettingsModal}
+        onClose={() => setShowMasterSettingsModal(false)}
+        currentUser={currentUser}
+        onUpdateUserSettings={(updated) => {
+          if (updated.greenTickActive !== undefined) setHasGreenTick(updated.greenTickActive)
+          if (updated.dataSaver !== undefined) setDataSaverMode(updated.dataSaver)
+          if (updated.chatAccess !== undefined) setChatPermission(updated.chatAccess)
+        }}
+      />
 
     </div>
   )

@@ -878,10 +878,13 @@ class AiCuratorEngine {
     // Save combined active schemes to schemes-feed.json so server.js schemes cache stays in sync
     this.syncFeedFile();
 
-    // Start recurring autonomous audit cycle (every 15 minutes)
+    // Run initial autonomous audit cycle on app/web startup
+    this.runAuditCycle('STARTUP_AUTONOMOUS_AUDIT');
+
+    // Start recurring autonomous audit cycle (every 2 minutes)
     setInterval(() => {
-      this.runAuditCycle('AUTONOMOUS_SCHEDULED');
-    }, 15 * 60 * 1000);
+      this.runAuditCycle('AUTONOMOUS_SCHEDULED_2MIN');
+    }, 2 * 60 * 1000);
   }
 
   recordAuditLog(entry) {

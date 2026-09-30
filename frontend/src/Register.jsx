@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from './config'
 import { COUNTRIES_LIST, findCountry, validateInternationalPhone } from './countriesData'
+import { validateStateAndPincodeClientSide, inferStateClientSide } from './pincodeUtils'
+import { saveFarmerUserSession } from './userSession'
 
 // Standard fallback list of Indian States & Union Territories
 const FALLBACK_INDIAN_STATES = [
@@ -106,6 +108,31 @@ export default function Register({ onDone }) {
   }, [countryType, state, pincode])
 
   const validateStateAndPincode = async (selectedState, pin) => {
+    // 1. Instant client-side validation based on official Indian Postal Circles
+    const clientCheck = validateStateAndPincodeClientSide(selectedState, pin)
+    if (!clientCheck.match) {
+      setPinValidation({
+        checked: true,
+        match: false,
+        error: clientCheck.error || `PIN code ${pin} belongs to ${clientCheck.actualState || 'another state'}, not ${selectedState}.`,
+        district: '',
+        actualState: clientCheck.actualState || '',
+        offices: []
+      })
+      return
+    }
+
+    // Set optimistic match
+    setPinValidation({
+      checked: true,
+      match: true,
+      error: '',
+      district: clientCheck.district || '',
+      actualState: clientCheck.state || selectedState,
+      offices: []
+    })
+
+    // 2. Fetch full directory enrichment (district & post offices) from backend if available
     try {
       const res = await axios.get(`${API_BASE_URL}/api/pincode/validate`, {
         params: { state: selectedState, pincode: pin }
@@ -116,29 +143,33 @@ export default function Register({ onDone }) {
           checked: true,
           match: true,
           error: '',
-          district: data.district,
-          actualState: data.state,
+          district: data.district || clientCheck.district,
+          actualState: data.state || selectedState,
           offices: data.offices || []
         })
-      } else {
+      } else if (data.match === false) {
+        // Only set mismatch if backend explicitly states a mismatch
         setPinValidation({
           checked: true,
           match: false,
-          error: data.error || `State and Pincode are not matching. PIN code ${pin} belongs to ${data.actualState || 'another state'}, not ${selectedState}.`,
+          error: data.error || `PIN code ${pin} belongs to ${data.actualState || 'another state'}, not ${selectedState}.`,
           district: data.district || '',
           actualState: data.actualState || '',
           offices: []
         })
       }
     } catch (err) {
-      setPinValidation({
-        checked: true,
-        match: false,
-        error: 'Unable to verify PIN code right now. Please check your network.',
-        district: '',
-        actualState: '',
-        offices: []
-      })
+      // Graceful fallback: If backend is offline or network fails, retain the client-side validated result
+      if (clientCheck.match) {
+        setPinValidation({
+          checked: true,
+          match: true,
+          error: '',
+          district: clientCheck.district || `${selectedState} Area`,
+          actualState: selectedState,
+          offices: []
+        })
+      }
     }
   }
 
@@ -243,14 +274,16 @@ export default function Register({ onDone }) {
     try {
       const res = await axios.post(`${API_BASE_URL}/auth/verify-registration`, { phone, otp })
       if (res.data.token) {
-        localStorage.setItem('farmer_token', res.data.token)
-        localStorage.setItem('farmer_name', (res.data.user?.name || name).trim())
-        localStorage.setItem('farmer_registered_name', (res.data.user?.name || name).trim())
-        localStorage.setItem('farmer_country_type', countryType)
-        localStorage.setItem('farmer_country', countryType === 'india' ? 'India' : countryName)
-        localStorage.setItem('farmer_state', state)
-        localStorage.setItem('farmer_pincode', countryType === 'india' ? pincode : '')
-        localStorage.setItem('farmer_village', village)
+        const u = res.data.user || {
+          phone,
+          name: name.trim(),
+          countryType,
+          country: countryType === 'india' ? 'India' : countryName,
+          state: state.trim(),
+          pincode: countryType === 'india' ? pincode.trim() : '',
+          village: village.trim()
+        }
+        saveFarmerUserSession(u, res.data.token)
       }
       alert('Registration successful!')
       onDone && onDone()
@@ -461,7 +494,11 @@ export default function Register({ onDone }) {
                         State and Pincode are not matching
                       </div>
                       <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 2 }}>
-                        PIN code <strong>{pincode}</strong> belongs to <strong>{pinValidation.actualState}</strong>, not {state}.
+                        {pinValidation.error || (
+                          pinValidation.actualState 
+                            ? <>PIN code <strong>{pincode}</strong> belongs to <strong>{pinValidation.actualState}</strong>, not {state}.</>
+                            : <>PIN code <strong>{pincode}</strong> does not match {state}.</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -486,7 +523,12 @@ export default function Register({ onDone }) {
                         Verified Indian Postal Code
                       </div>
                       <div style={{ color: '#166534', marginTop: 1 }}>
-                        District: <strong>{pinValidation.district || 'Verified Area'}</strong>, {pinValidation.actualState}
+                        District: <strong>{pinValidation.district || 'Verified Postal Zone'}</strong>, {pinValidation.actualState || state}
+                        {pinValidation.offices && pinValidation.offices.length > 0 && (
+                          <span style={{ color: '#475569', marginLeft: 6, fontSize: 11 }}>
+                            ({pinValidation.offices.slice(0, 3).join(', ')})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

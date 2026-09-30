@@ -1255,6 +1255,23 @@ app.post('/auth/register', async (req, res) => {
   });
 });
 
+function generateUserToken(user) {
+  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
+  return jwt.sign({ 
+    phone: user.phone, 
+    name: user.name, 
+    village: user.village || '',
+    state: user.state || '',
+    pincode: user.pincode || '',
+    district: user.district || '',
+    country: user.country || 'India',
+    countryType: user.countryType || 'india',
+    landholding: user.landholding || user.land || '3.5',
+    primaryCrops: user.primaryCrops || user.crops || 'Paddy, Cotton',
+    tier: user.tier || 'pro_farmer'
+  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+}
+
 // Step 2: Verify Registration - takes phone and OTP, creates user, returns token
 app.post('/auth/verify-registration', async (req, res) => {
   const { phone, otp } = req.body || {};
@@ -1289,17 +1306,7 @@ app.post('/auth/verify-registration', async (req, res) => {
   await deleteOTP(phone);
 
   // Generate JWT and log the user in
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ 
-    phone: newUser.phone, 
-    name: newUser.name, 
-    village: newUser.village,
-    state: newUser.state,
-    pincode: newUser.pincode,
-    district: newUser.district,
-    country: newUser.country || 'India',
-    countryType: newUser.countryType || 'india'
-  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(newUser);
   
   res.json({ success: true, message: 'Registration successful!', token, user: newUser });
 });
@@ -1376,8 +1383,7 @@ app.post('/auth/verify-otp', async (req, res) => {
   await deleteOTP(phone);
 
   // Generate JWT
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(user);
   
   res.json({ success: true, message: 'Login successful!', token, user });
 });
@@ -1401,8 +1407,7 @@ app.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Incorrect password. (Tip: Use password123 or Direct Access)' });
     }
     
-    const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-    const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+    const token = generateUserToken(user);
     return res.json({ success: true, message: 'Login successful!', token, user });
   }
 
@@ -1430,7 +1435,7 @@ app.post('/auth/login', async (req, res) => {
   });
 });
 
-// Step 2 for Login: Verify OTP and get token (LEGACY - kept for backward compatibility, but /auth/verify-otp is preferred)
+// Step 2 for Login: Verify OTP and get token (LEGACY)
 app.post('/auth/verify-login', async (req, res) => {
   const { phone, otp } = req.body || {};
   if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP are required' });
@@ -1452,10 +1457,18 @@ app.post('/auth/verify-login', async (req, res) => {
   await redisClient.del(`otp:${phone}`);
 
   // Generate JWT
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(user);
   
   res.json({ success: true, message: 'Login successful!', token, user });
+});
+
+// Get User Profile
+app.get('/api/user/profile', async (req, res) => {
+  const phone = req.query.phone || (req.user && req.user.phone);
+  if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+  const user = await getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true, user });
 });
 
 // NEW: Token verification endpoint

@@ -4,10 +4,11 @@ import { API_BASE_URL } from '../config'
 import Navbar from './Navbar'
 import UniversalProfileModal from './UniversalProfileModal'
 import PortalApplyModal from './PortalApplyModal'
+import { DEFAULT_SCHEMES, DEFAULT_LOANS } from '../data/schemesFallback'
 
 export default function Schemes({ onBack }) {
-  const [schemes, setSchemes] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [schemes, setSchemes] = useState(DEFAULT_SCHEMES)
+  const [loading, setLoading] = useState(false)
   const [applyState, setApplyState] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [lifecycleFilter, setLifecycleFilter] = useState('active') // 'active', 'new', 'archived', 'all'
@@ -17,7 +18,14 @@ export default function Schemes({ onBack }) {
   const [toast, setToast] = useState(null)
   
   // AI Curator State
-  const [curatorStatus, setCuratorStatus] = useState(null)
+  const [curatorStatus, setCuratorStatus] = useState({
+    stats: {
+      totalActiveSchemes: 11,
+      newSchemesDiscovered: 5,
+      archivedClosedSchemes: 3,
+      auditedLoans: 6
+    }
+  })
   const [curating, setCurating] = useState(false)
   const [showCuratorLogModal, setShowCuratorLogModal] = useState(false)
 
@@ -37,7 +45,7 @@ export default function Schemes({ onBack }) {
 
   // Master Section Switcher: 'schemes' | 'govt_loans' | 'commercial_loans'
   const [mainTab, setMainTab] = useState('schemes')
-  const [loanCatalog, setLoanCatalog] = useState({ govtBankLoans: [], commercialBankLoans: [] })
+  const [loanCatalog, setLoanCatalog] = useState(DEFAULT_LOANS)
   const [loadingLoans, setLoadingLoans] = useState(false)
   const [loanCategoryFilter, setLoanCategoryFilter] = useState('all')
   const [loanSearchQuery, setLoanSearchQuery] = useState('')
@@ -58,10 +66,11 @@ export default function Schemes({ onBack }) {
     fetchLoanCatalog()
     loadUniversalProfile()
     loadMyApplications()
+    // Autonomous auto-audit synchronization: refresh every 2 minutes
     const iv = setInterval(() => {
       fetchSchemes(false, lifecycleFilter)
       fetchLoanCatalog()
-    }, 60 * 1000)
+    }, 2 * 60 * 1000)
     return () => clearInterval(iv)
   }, [lifecycleFilter])
 
@@ -152,19 +161,30 @@ export default function Schemes({ onBack }) {
     }
   }
 
-  const fetchSchemes = async (showLoader = true, filter = lifecycleFilter) => {
+  const fetchSchemes = async (showLoader = false, filter = lifecycleFilter) => {
     try {
       if (showLoader) setLoading(true)
       const res = await axios.get(`${API_BASE_URL}/schemes`, {
         params: { status: filter }
       })
-      setSchemes(res.data.schemes || [])
-      if (res.data.curatorStatus) {
+      if (res.data?.schemes && res.data.schemes.length > 0) {
+        setSchemes(res.data.schemes)
+      } else {
+        const fallback = filter === 'archived'
+          ? DEFAULT_SCHEMES.filter(s => s.lifecycleStatus === 'archived')
+          : DEFAULT_SCHEMES.filter(s => s.lifecycleStatus !== 'archived')
+        setSchemes(fallback)
+      }
+      if (res.data?.curatorStatus) {
         setCuratorStatus(res.data.curatorStatus)
       }
       setLastUpdated(new Date().toLocaleTimeString())
     } catch (err) {
       console.error('Failed to fetch schemes', err)
+      const fallback = filter === 'archived'
+        ? DEFAULT_SCHEMES.filter(s => s.lifecycleStatus === 'archived')
+        : DEFAULT_SCHEMES.filter(s => s.lifecycleStatus !== 'archived')
+      setSchemes(fallback)
     } finally {
       if (showLoader) setLoading(false)
     }
@@ -296,13 +316,14 @@ export default function Schemes({ onBack }) {
 
   const filteredSchemes = schemes.filter(s => {
     const matchesCategory = 
-      categoryFilter === 'all' ? true :
+      categoryFilter === 'all' ? (s.lifecycleStatus !== 'archived') :
+      categoryFilter === 'archived' ? (s.lifecycleStatus === 'archived') :
       categoryFilter === 'income' ? (s.type === 'income_support' || s.id.includes('kisan')) :
       categoryFilter === 'insurance' ? (s.type === 'insurance') :
       categoryFilter === 'solar' ? (s.type === 'renewable_energy') :
       categoryFilter === 'machinery' ? (s.type === 'machinery') :
       categoryFilter === 'irrigation' ? (s.type === 'irrigation') :
-      categoryFilter === 'new_tech' ? (s.type === 'fertilizer_subsidy' || s.type === 'digital_registry' || s.type === 'women_empowerment' || s.type === 'fisheries') : true
+      categoryFilter === 'new_tech' ? (s.type === 'fertilizer_subsidy' || s.type === 'digital_registry' || s.type === 'women_empowerment' || s.type === 'fisheries' || s.lifecycleStatus === 'newly_added') : true
 
     const q = searchQuery.toLowerCase().trim()
     const matchesSearch = !q ? true : (
@@ -345,22 +366,26 @@ export default function Schemes({ onBack }) {
   })
 
   return (
-    <div style={{ minHeight: '100vh', padding: '16px 12px 90px', backgroundColor: 'var(--bg-page)', color: 'var(--text-main)' }}>
-      <div className="container" style={{ width: '96%', maxWidth: '1720px', margin: '0 auto' }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans select-none pb-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4">
         
         {toast && (
-          <div style={{ position: 'fixed', right: 24, top: 24, zIndex: 6000, maxWidth: 460 }}>
-            <div className="card" style={{ padding: '14px 20px', background: toast.type === 'success' ? '#182c1d' : '#fee2e2', color: toast.type === 'success' ? '#dcfce7' : '#991b1b', border: toast.type === 'success' ? '2px solid #5ca346' : '2px solid #ef4444', boxShadow: '0 12px 28px rgba(0,0,0,0.35)', borderRadius: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.4 }}>{toast.message}</div>
+          <div className="fixed right-6 top-6 z-50 max-w-md">
+            <div className={`p-4 rounded-2xl shadow-xl border text-xs font-bold leading-relaxed ${
+              toast.type === 'success' 
+                ? 'bg-emerald-50 text-emerald-900 border-emerald-200 shadow-emerald-900/10' 
+                : 'bg-rose-50 text-rose-900 border-rose-200 shadow-rose-900/10'
+            }`}>
+              {toast.message}
             </div>
           </div>
         )}
 
         <Navbar 
           title={
-            mainTab === 'schemes' ? '🏛️ Government Schemes & AI Autonomous Subsidy Curator' :
+            mainTab === 'schemes' ? '🏛️ Government Schemes & AI Subsidy Curator' :
             mainTab === 'govt_loans' ? '🏦 Government Bank Loans & 4% Kisan Credit (KCC)' :
-            '🏢 Commercial / Non-Govt Bank Loans (Private Commercial Banks)'
+            '🏢 Commercial Bank Loans (Private Banking)'
           } 
           showBack={true} 
           onBack={onBack} 
@@ -369,119 +394,164 @@ export default function Schemes({ onBack }) {
         {/* ========================================================================= */}
         {/* HIGH-LEVEL MASTER 3-WAY OPTION CONTROLLER */}
         {/* ========================================================================= */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 12,
-          marginBottom: 24
-        }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-6">
           {/* OPTION 1: ALL GOVT SCHEMES */}
           <button
+            type="button"
             onClick={() => setMainTab('schemes')}
-            style={{
-              padding: '16px 20px',
-              borderRadius: 12,
-              border: mainTab === 'schemes' ? '3px solid #5ca346' : '1px solid #e2ece0',
-              background: mainTab === 'schemes' ? 'linear-gradient(135deg, #182c1d 0%, #0f1c13 100%)' : '#ffffff',
-              color: mainTab === 'schemes' ? '#ffffff' : '#182c1d',
-              cursor: 'pointer',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              boxShadow: mainTab === 'schemes' ? '0 8px 20px rgba(24, 44, 29, 0.25)' : '0 2px 6px rgba(0,0,0,0.04)',
-              transition: 'all 0.15s ease'
-            }}
+            className={`p-4 sm:p-5 rounded-2xl border text-left flex items-center gap-4 transition-all duration-200 cursor-pointer ${
+              mainTab === 'schemes'
+                ? 'bg-gradient-to-br from-emerald-500 to-green-600 text-white border-emerald-400 shadow-md ring-2 ring-emerald-300/40'
+                : 'bg-white text-slate-800 border-slate-200/80 hover:border-emerald-300 hover:shadow-xs'
+            }`}
           >
-            <div style={{ fontSize: 30, background: mainTab === 'schemes' ? 'rgba(92,163,70,0.25)' : '#eaf7e6', width: 52, height: 52, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 font-bold ${
+              mainTab === 'schemes' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-600'
+            }`}>
               🏛️
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', color: mainTab === 'schemes' ? '#a7f3d0' : '#2e7d32', marginBottom: 2 }}>
+              <div className={`text-[10px] font-black uppercase tracking-wider mb-0.5 ${
+                mainTab === 'schemes' ? 'text-emerald-100' : 'text-emerald-600'
+              }`}>
                 Option 1 • Central & State DBT
               </div>
-              <div style={{ fontSize: 16, fontWeight: 900, lineHeight: 1.2 }}>
+              <div className="text-sm sm:text-base font-black leading-tight">
                 All Govt Schemes & Subsidies
               </div>
-              <div style={{ fontSize: 12, color: mainTab === 'schemes' ? '#cbd5e1' : '#64748b', marginTop: 3 }}>
-                {schemes.length} verified programs • PM-Kisan, PMFBY, KUSUM
+              <div className={`text-xs mt-1 font-medium ${
+                mainTab === 'schemes' ? 'text-emerald-50' : 'text-slate-500'
+              }`}>
+                {filteredSchemes.length} verified • PM-Kisan, PMFBY, KUSUM
               </div>
             </div>
           </button>
 
           {/* OPTION 2: GOVT BANK LOANS */}
           <button
+            type="button"
             onClick={() => setMainTab('govt_loans')}
-            style={{
-              padding: '16px 20px',
-              borderRadius: 12,
-              border: mainTab === 'govt_loans' ? '3px solid #5ca346' : '1px solid #e2ece0',
-              background: mainTab === 'govt_loans' ? 'linear-gradient(135deg, #182c1d 0%, #0f1c13 100%)' : '#ffffff',
-              color: mainTab === 'govt_loans' ? '#ffffff' : '#182c1d',
-              cursor: 'pointer',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              boxShadow: mainTab === 'govt_loans' ? '0 8px 20px rgba(24, 44, 29, 0.25)' : '0 2px 6px rgba(0,0,0,0.04)',
-              transition: 'all 0.15s ease'
-            }}
+            className={`p-4 sm:p-5 rounded-2xl border text-left flex items-center gap-4 transition-all duration-200 cursor-pointer ${
+              mainTab === 'govt_loans'
+                ? 'bg-gradient-to-br from-emerald-500 to-green-600 text-white border-emerald-400 shadow-md ring-2 ring-emerald-300/40'
+                : 'bg-white text-slate-800 border-slate-200/80 hover:border-emerald-300 hover:shadow-xs'
+            }`}
           >
-            <div style={{ fontSize: 30, background: mainTab === 'govt_loans' ? 'rgba(92,163,70,0.25)' : '#eaf7e6', width: 52, height: 52, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 font-bold ${
+              mainTab === 'govt_loans' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-600'
+            }`}>
               🏦
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', color: mainTab === 'govt_loans' ? '#a7f3d0' : '#2e7d32', marginBottom: 2 }}>
-                  Option 2 • Public Sector Banks
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${
+                  mainTab === 'govt_loans' ? 'text-emerald-100' : 'text-emerald-600'
+                }`}>
+                  Option 2 • Public Sector
                 </span>
-                <span className="badge-sharp" style={{ background: '#10b981', color: '#ffffff', fontSize: 9, padding: '1px 5px' }}>4% KCC</span>
+                <span className="bg-emerald-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-md">
+                  4% KCC
+                </span>
               </div>
-              <div style={{ fontSize: 16, fontWeight: 900, lineHeight: 1.2 }}>
-                Govt Bank Loans & Kisan Credit
+              <div className="text-sm sm:text-base font-black leading-tight">
+                Govt Bank Loans & KCC
               </div>
-              <div style={{ fontSize: 12, color: mainTab === 'govt_loans' ? '#cbd5e1' : '#64748b', marginTop: 3 }}>
-                SBI, PNB, BoB, Canara, NABARD, MUDRA • 3% Central Subvention
+              <div className={`text-xs mt-1 font-medium ${
+                mainTab === 'govt_loans' ? 'text-emerald-50' : 'text-slate-500'
+              }`}>
+                SBI, PNB, BoB, Canara • 3% Central Subvention
               </div>
             </div>
           </button>
 
           {/* OPTION 3: COMMERCIAL / NON-GOVT BANK LOANS */}
           <button
+            type="button"
             onClick={() => setMainTab('commercial_loans')}
-            style={{
-              padding: '16px 20px',
-              borderRadius: 12,
-              border: mainTab === 'commercial_loans' ? '3px solid #3b82f6' : '1px solid #e2ece0',
-              background: mainTab === 'commercial_loans' ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' : '#ffffff',
-              color: mainTab === 'commercial_loans' ? '#ffffff' : '#182c1d',
-              cursor: 'pointer',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              boxShadow: mainTab === 'commercial_loans' ? '0 8px 20px rgba(30, 41, 59, 0.25)' : '0 2px 6px rgba(0,0,0,0.04)',
-              transition: 'all 0.15s ease'
-            }}
+            className={`p-4 sm:p-5 rounded-2xl border text-left flex items-center gap-4 transition-all duration-200 cursor-pointer ${
+              mainTab === 'commercial_loans'
+                ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-blue-400 shadow-md ring-2 ring-blue-300/40'
+                : 'bg-white text-slate-800 border-slate-200/80 hover:border-blue-300 hover:shadow-xs'
+            }`}
           >
-            <div style={{ fontSize: 30, background: mainTab === 'commercial_loans' ? 'rgba(59,130,246,0.25)' : '#eff6ff', width: 52, height: 52, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 font-bold ${
+              mainTab === 'commercial_loans' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
+            }`}>
               🏢
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', color: mainTab === 'commercial_loans' ? '#93c5fd' : '#2563eb', marginBottom: 2 }}>
-                  Option 3 • Private Commercial Banks
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${
+                  mainTab === 'commercial_loans' ? 'text-blue-100' : 'text-blue-600'
+                }`}>
+                  Option 3 • Private Banks
                 </span>
-                <span className="badge-sharp" style={{ background: '#3b82f6', color: '#ffffff', fontSize: 9, padding: '1px 5px' }}>Non-Govt</span>
+                <span className="bg-blue-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-md">
+                  Commercial
+                </span>
               </div>
-              <div style={{ fontSize: 16, fontWeight: 900, lineHeight: 1.2 }}>
+              <div className="text-sm sm:text-base font-black leading-tight">
                 Commercial / Non-Govt Loans
               </div>
-              <div style={{ fontSize: 12, color: mainTab === 'commercial_loans' ? '#cbd5e1' : '#64748b', marginTop: 3 }}>
-                HDFC, ICICI, Axis, Kotak • Private Bank Commercial Rates
+              <div className={`text-xs mt-1 font-medium ${
+                mainTab === 'commercial_loans' ? 'text-blue-50' : 'text-slate-500'
+              }`}>
+                HDFC, ICICI, Axis, Kotak • Fast Processing
               </div>
             </div>
           </button>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* ENCRYPTED FARMER DIGI-LOCKER PROFILE BANNER (Common across views) */}
+        {/* ========================================================================= */}
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-emerald-100 shadow-xs mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+              <span className="text-base font-black text-slate-900 flex items-center gap-2">
+                <span>🔒</span> {userProfile?.fullName || 'Farmer Digi-Locker Vault'}
+              </span>
+              {userProfile?.aadhaarNumber && (
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200/60">
+                  Aadhaar: XXXX-XXXX-{String(userProfile.aadhaarNumber).slice(-4)}
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed m-0 max-w-2xl">
+              {readiness.score > 0 ? (
+                <><strong>1-Click Official Portal Filing:</strong> Your verified digital profile automatically autofills central and state welfare scheme applications with instant DigiLocker authentication.</>
+              ) : (
+                <><strong>Encrypted Vault is Ready:</strong> Click <strong>"Setup Digi-Locker"</strong> to save your land records and bank details securely once for all government schemes.</>
+              )}
+            </p>
+
+            {readiness.score > 0 && (
+              <div className="flex gap-2.5 mt-2.5 text-xs text-emerald-700 font-semibold flex-wrap">
+                {userProfile?.village && <span className="bg-emerald-50/80 px-2 py-0.5 rounded-md border border-emerald-100">📍 {userProfile.village}, {userProfile.district || ''}</span>}
+                {userProfile?.landAreaAcres && <span className="bg-emerald-50/80 px-2 py-0.5 rounded-md border border-emerald-100">🌾 {userProfile.landAreaAcres} Acres</span>}
+                {userProfile?.bankName && <span className="bg-emerald-50/80 px-2 py-0.5 rounded-md border border-emerald-100">🏦 {userProfile.bankName}</span>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 items-center flex-wrap shrink-0">
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              {readiness.score > 0 ? '✏️ Edit Digi-Locker' : '🔒 Setup Digi-Locker'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { loadMyApplications(); setApplicationsModalOpen(true); }}
+              className="bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 transition cursor-pointer"
+            >
+              📑 My Applications ({myApplications.length})
+            </button>
+          </div>
         </div>
 
         {/* ========================================================================= */}
@@ -489,573 +559,255 @@ export default function Schemes({ onBack }) {
         {/* ========================================================================= */}
         {mainTab === 'schemes' && (
           <>
-            {/* AI Autonomous Curator Live Command Center */}
-            <div style={{ 
-              background: 'linear-gradient(135deg, #182c1d 0%, #0f1c13 100%)', 
-              border: '2px solid #5ca346', 
-              borderRadius: 16, 
-              padding: '20px 24px', 
-              marginBottom: 20, 
-              boxShadow: '0 8px 24px rgba(24, 44, 29, 0.25)',
-              color: '#ffffff'
-            }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap', borderBottom: '1px solid rgba(92, 163, 70, 0.3)', paddingBottom: 16, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span className="badge-sharp" style={{ background: '#5ca346', color: '#ffffff', fontSize: 11, fontWeight: 900, letterSpacing: '0.8px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ffffff', animation: 'pulse 1.8s infinite' }}></span>
-                🤖 AI AUTONOMOUS CURATOR ACTIVE
-              </span>
-              <span style={{ fontSize: 13, color: '#a7f3d0', fontWeight: 600 }}>
-                Continuous 24/7 Scheme Verification & 1-Click Direct Portal Application
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button 
-                onClick={triggerAiCurator}
-                disabled={curating}
-                className="btn btn-primary"
-                style={{ 
-                  padding: '9px 18px', 
-                  fontSize: 13, 
-                  fontWeight: 900, 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: 8,
-                  backgroundColor: curating ? '#22543d' : '#5ca346',
-                  borderColor: '#5ca346'
-                }}
-              >
-                {curating ? (
-                  <>
-                    <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span>
-                    <span>AI Auditing Portals...</span>
-                  </>
-                ) : (
-                  <>⚡ Run AI Audit Now</>
-                )}
-              </button>
-
-              <button 
-                onClick={() => setShowCuratorLogModal(true)}
-                className="btn btn-dark"
-                style={{ padding: '9px 16px', fontSize: 13, fontWeight: 800, backgroundColor: '#26422d', border: '1px solid #3c6e43' }}
-              >
-                📋 Audit Trails
-              </button>
-            </div>
-          </div>
-
-          {/* Real-time KPI Stats Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-            <div style={{ background: 'rgba(255,255,255,0.06)', padding: '12px 16px', borderRadius: 10, borderLeft: '4px solid #10b981' }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 800 }}>🟢 Verified Active Schemes</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#ffffff', marginTop: 4 }}>
-                {curatorStatus?.stats?.totalActiveSchemes || 11}
+            {/* Category Filter Chips & Search Bar */}
+            <div className="space-y-3.5 mb-6">
+              <div className="flex flex-wrap gap-2 items-center">
+                {[
+                  { id: 'all', label: '🏛️ All Schemes' },
+                  { id: 'income', label: '🌾 Direct Income' },
+                  { id: 'insurance', label: '🛡️ Crop Insurance' },
+                  { id: 'solar', label: '☀️ Solar PM-KUSUM' },
+                  { id: 'machinery', label: '🚜 Farm Machinery & Drones' },
+                  { id: 'irrigation', label: '💧 Drip Irrigation' },
+                  { id: 'new_tech', label: '⚡ Advanced 2026 Tech' },
+                  { id: 'archived', label: '📦 Archived Schemes' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setCategoryFilter(tab.id)
+                      if (tab.id === 'archived') {
+                        setLifecycleFilter('archived')
+                      } else if (lifecycleFilter === 'archived') {
+                        setLifecycleFilter('active')
+                      }
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-xs ${
+                      categoryFilter === tab.id
+                        ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/40'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-              <div style={{ fontSize: 11, color: '#34d399', marginTop: 2 }}>100% Valid & Open for Applications</div>
-            </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.06)', padding: '12px 16px', borderRadius: 10, borderLeft: '4px solid #f59e0b' }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 800 }}>⚡ AI Added (New 2026)</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#fbbf24', marginTop: 4 }}>
-                {curatorStatus?.stats?.newSchemesDiscovered || 5}
+              <div className="relative w-full">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Search schemes, subsidies, keywords (e.g. PM-Kisan, Solar pump, Drone subsidy)..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white text-xs sm:text-sm font-semibold text-slate-800 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-xs placeholder-slate-400 transition"
+                />
               </div>
-              <div style={{ fontSize: 11, color: '#fde68a', marginTop: 2 }}>PM-PRANAM, Drones, AgriStack Added</div>
             </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.06)', padding: '12px 16px', borderRadius: 10, borderLeft: '4px solid #ef4444' }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 800 }}>⛔ Closed Schemes Auto-Archived</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#f87171', marginTop: 4 }}>
-                {curatorStatus?.stats?.archivedClosedSchemes || 3}
-              </div>
-              <div style={{ fontSize: 11, color: '#fca5a5', marginTop: 2 }}>Removed from Active Lists to Protect Farmers</div>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.06)', padding: '12px 16px', borderRadius: 10, borderLeft: '4px solid #3b82f6' }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 800 }}>🏦 Bank Loans & Rates Audited</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#93c5fd', marginTop: 4 }}>
-                {curatorStatus?.stats?.auditedLoans || 6}
-              </div>
-              <div style={{ fontSize: 11, color: '#bfdbfe', marginTop: 2 }}>4% Net KCC & RBI Norms Verified</div>
-            </div>
-          </div>
-        </div>
-
-        {/* ENCRYPTED FARMER DIGI-LOCKER PROFILE BANNER */}
-        <div style={{
-          background: '#ffffff',
-          border: '2px solid #5ca346',
-          borderRadius: 16,
-          padding: '18px 24px',
-          marginBottom: 24,
-          boxShadow: '0 4px 16px rgba(24, 44, 29, 0.08)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 16
-        }}>
-          <div style={{ flex: '1 1 480px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-              <span className="badge-sharp" style={{ background: readiness.isReady ? '#15803d' : '#475569', color: '#ffffff', fontSize: 11, fontWeight: 900 }}>
-                {readiness.isReady ? '✓ DIGI-LOCKER READY (100%)' : `🔒 ENCRYPTED DIGI-LOCKER (${readiness.score}% FILLED)`}
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 900, color: '#182c1d' }}>
-                {userProfile?.fullName || 'Your Private Digi-Locker Vault'}
-              </span>
-              {userProfile?.aadhaarNumber && (
-                <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 8px', borderRadius: 4 }}>
-                  Aadhaar: XXXX-XXXX-{String(userProfile.aadhaarNumber).slice(-4)}
-                </span>
-              )}
-            </div>
-
-            <p style={{ margin: 0, fontSize: 13, color: '#496150', lineHeight: 1.4 }}>
-              {readiness.score > 0 ? (
-                <><strong>1-Click Official Portal Apply Enabled:</strong> Your encrypted credentials automatically autofill government scheme forms with anti-bot captcha verification.</>
-              ) : (
-                <><strong>Encrypted Vault is Empty:</strong> Your credentials are not filled yet. Click <strong>"Setup Digi-Locker"</strong> to enter your details once. Only you can access your vault.</>
-              )}
-            </p>
-
-            {readiness.score > 0 && (
-              <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 11, color: '#065f46', flexWrap: 'wrap' }}>
-                {userProfile?.village && <span>📍 {userProfile.village}, {userProfile.district || ''}</span>}
-                {userProfile?.landAreaAcres && <span>• 🌾 {userProfile.landAreaAcres} Acres {userProfile.surveyKhasraNo ? `(${userProfile.surveyKhasraNo})` : ''}</span>}
-                {userProfile?.bankName && <span>• 🏦 {userProfile.bankName}</span>}
-                {userProfile?.primaryCrop && <span>• 🌱 {userProfile.primaryCrop}</span>}
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setProfileModalOpen(true)}
-              className="btn btn-dark"
-              style={{ padding: '9px 18px', fontSize: 13, fontWeight: 800, backgroundColor: '#182c1d', border: '1px solid #3c6e43' }}
-            >
-              {readiness.score > 0 ? '✏️ Edit Digi-Locker' : '🔒 Setup Digi-Locker'}
-            </button>
-
-            <button
-              onClick={() => { loadMyApplications(); setApplicationsModalOpen(true); }}
-              className="btn btn-outline"
-              style={{ padding: '9px 18px', fontSize: 13, fontWeight: 800 }}
-            >
-              📑 My Portal Applications ({myApplications.length})
-            </button>
-          </div>
-        </div>
-
-        {/* Lifecycle Selector Tabs (Active vs AI-New vs Archived Closed) */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setLifecycleFilter('active')}
-              style={{
-                padding: '9px 18px',
-                fontSize: 13,
-                fontWeight: 900,
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: lifecycleFilter === 'active' ? '#5ca346' : '#ffffff',
-                color: lifecycleFilter === 'active' ? '#ffffff' : '#182c1d',
-                boxShadow: lifecycleFilter === 'active' ? '0 4px 12px rgba(92, 163, 70, 0.4)' : '0 1px 3px rgba(0,0,0,0.1)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              <span>🟢</span>
-              <span>Active Schemes ({curatorStatus?.stats?.totalActiveSchemes || 11})</span>
-            </button>
-
-            <button
-              onClick={() => setLifecycleFilter('new')}
-              style={{
-                padding: '9px 18px',
-                fontSize: 13,
-                fontWeight: 900,
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: lifecycleFilter === 'new' ? '#d97706' : '#ffffff',
-                color: lifecycleFilter === 'new' ? '#ffffff' : '#92400e',
-                boxShadow: lifecycleFilter === 'new' ? '0 4px 12px rgba(217, 119, 6, 0.4)' : '0 1px 3px rgba(0,0,0,0.1)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              <span>⚡</span>
-              <span>AI Added (New 2026) ({curatorStatus?.stats?.newSchemesDiscovered || 5})</span>
-            </button>
-
-            <button
-              onClick={() => setLifecycleFilter('archived')}
-              style={{
-                padding: '9px 18px',
-                fontSize: 13,
-                fontWeight: 900,
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: lifecycleFilter === 'archived' ? '#dc2626' : '#ffffff',
-                color: lifecycleFilter === 'archived' ? '#ffffff' : '#991b1b',
-                boxShadow: lifecycleFilter === 'archived' ? '0 4px 12px rgba(220, 38, 38, 0.4)' : '0 1px 3px rgba(0,0,0,0.1)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              <span>📦</span>
-              <span>Archived / Closed Schemes ({curatorStatus?.stats?.archivedClosedSchemes || 3})</span>
-            </button>
-
-            <button
-              onClick={() => setLifecycleFilter('all')}
-              style={{
-                padding: '9px 16px',
-                fontSize: 13,
-                fontWeight: 800,
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: lifecycleFilter === 'all' ? '#1f2937' : '#ffffff',
-                color: lifecycleFilter === 'all' ? '#ffffff' : '#4b5563',
-                boxShadow: lifecycleFilter === 'all' ? '0 4px 12px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)'
-              }}
-            >
-              All Registers
-            </button>
-          </div>
-
-          {/* Quick links to Loan & News */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button 
-              onClick={() => { window.location.hash = '#/finance' }}
-              className="btn btn-outline"
-              style={{ padding: '8px 14px', fontSize: 12, fontWeight: 800 }}
-            >
-              💰 Audited Loans →
-            </button>
-            <button 
-              onClick={() => { window.location.hash = '#/community-news' }}
-              className="btn btn-outline"
-              style={{ padding: '8px 14px', fontSize: 12, fontWeight: 800 }}
-            >
-              📰 Daily Farmer Wire →
-            </button>
-          </div>
-        </div>
-
-        {/* Notice for Archived View */}
-        {lifecycleFilter === 'archived' && (
-          <div style={{ background: '#fef2f2', border: '2px solid #ef4444', borderRadius: 12, padding: '14px 18px', marginBottom: 20, color: '#991b1b' }}>
-            <div style={{ fontWeight: 900, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>⛔ Transparency Notice: Schemes Closed or Discontinued by Government</span>
-            </div>
-            <div style={{ fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>
-              The Krishi-Net AI Curator automatically isolates schemes whose deadlines have passed, budgets have been exhausted, or that have been superseded by new government initiatives. This prevents farmers from applying to dead programs.
-            </div>
-          </div>
-        )}
-
-        {/* Category Filter Chips & Search Bar */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {[
-              { id: 'all', label: 'All Categories' },
-              { id: 'income', label: '🌾 Direct Income' },
-              { id: 'insurance', label: '🛡️ Crop Insurance' },
-              { id: 'solar', label: '☀️ Solar Pumps' },
-              { id: 'machinery', label: '🚜 Farm Machinery & Drones' },
-              { id: 'irrigation', label: '💧 Drip Irrigation' },
-              { id: 'new_tech', label: '⚡ Advanced 2026 Tech' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setCategoryFilter(tab.id)}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  borderRadius: 20,
-                  border: '1px solid #d1d5db',
-                  cursor: 'pointer',
-                  backgroundColor: categoryFilter === tab.id ? '#182c1d' : '#ffffff',
-                  color: categoryFilter === tab.id ? '#ffffff' : '#374151',
-                  boxShadow: categoryFilter === tab.id ? '0 2px 6px rgba(24, 44, 29, 0.25)' : 'none'
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ minWidth: 280, flex: '0 1 360px' }}>
-            <input 
-              type="text" 
-              placeholder="🔍 Search schemes, subsidies, keywords..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ 
-                width: '100%', 
-                padding: '9px 16px', 
-                borderRadius: 24, 
-                border: '2px solid #5ca346', 
-                backgroundColor: '#ffffff', 
-                color: '#182c1d', 
-                fontSize: 13,
-                fontWeight: 600
-              }}
-            />
-          </div>
-        </div>
 
         {/* Schemes Grid */}
         {loading ? (
-          <div className="card" style={{ textAlign: 'center', padding: '50px 20px', background: '#ffffff', color: '#182c1d', borderRadius: 16 }}>
-            <div className="spinner" style={{ borderColor: '#5ca346', borderTopColor: 'transparent', margin: '0 auto 16px auto' }}></div>
-            <p style={{ color: '#182c1d', fontWeight: 900, fontSize: 16 }}>AI Curator Verifying Government Registries...</p>
-            <p style={{ color: '#6b7280', fontSize: 13 }}>Cross-referencing central DB, state nodal agencies, and subsidy availability</p>
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-xs">
+            <div className="w-10 h-10 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm font-black text-slate-800">AI Curator Verifying Government Registries...</p>
+            <p className="text-xs text-slate-500 mt-1">Cross-referencing central portals, state DBT registries, and subsidy quotas</p>
           </div>
         ) : filteredSchemes.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: 16 }}>
-            <p style={{ fontSize: 16, fontWeight: 800, color: '#374151' }}>No schemes found matching the selected filters.</p>
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3 text-xl">
+              🏛️
+            </div>
+            <p className="text-sm font-black text-slate-800 mb-1">No schemes found matching the selected filters.</p>
             <button 
+              type="button"
               onClick={() => { setCategoryFilter('all'); setSearchQuery(''); setLifecycleFilter('active'); }}
-              className="btn btn-primary"
-              style={{ marginTop: 10, padding: '8px 16px', fontSize: 12 }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl mt-3 shadow-xs transition cursor-pointer"
             >
               Reset Filters
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredSchemes.map(s => {
               const isNew = s.lifecycleStatus === 'newly_added'
               const isArchived = s.lifecycleStatus === 'archived'
-              const cardBorder = isArchived ? '#ef4444' : (isNew ? '#f59e0b' : '#5ca346')
 
               return (
                 <div 
                   key={s.id} 
-                  className="card" 
-                  style={{ 
-                    borderTop: `6px solid ${cardBorder}`, 
-                    margin: 0, 
-                    background: isArchived ? '#fbfbfb' : '#ffffff', 
-                    color: '#182c1d',
-                    padding: 22,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    borderRadius: 14,
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
-                    position: 'relative'
-                  }}
+                  className={`bg-white rounded-3xl p-5 border transition-all duration-200 flex flex-col justify-between hover:shadow-md ${
+                    isArchived 
+                      ? 'border-rose-200/80 bg-slate-50/50' 
+                      : isNew 
+                      ? 'border-amber-200/80 shadow-xs' 
+                      : 'border-slate-100 hover:border-emerald-200 shadow-xs'
+                  }`}
                 >
                   <div>
                     {/* Header: Provider + AI Stamp */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, fontWeight: 900, color: '#182c1d', textTransform: 'uppercase', background: '#f0fdf4', padding: '3px 9px', borderRadius: 4, border: '1px solid #bbf7d0' }}>
+                    <div className="flex justify-between items-start gap-2 mb-3">
+                      <span className="text-[10px] font-black text-emerald-700 uppercase bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
                         {s.provider}
                       </span>
                       
-                      {/* AI Stamp Badge */}
-                      <span className="badge-sharp" style={{ 
-                        background: isArchived ? '#ef4444' : (isNew ? '#d97706' : '#15803d'),
-                        color: '#ffffff',
-                        fontSize: 10,
-                        fontWeight: 900
-                      }}>
-                        {isArchived ? '⛔ CLOSED / ARCHIVED' : (isNew ? '⚡ AI ADDED 2026' : '✓ AI VERIFIED')}
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                        isArchived 
+                          ? 'bg-rose-50 text-rose-800 border border-rose-200' 
+                          : isNew 
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200' 
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}>
+                        {isArchived ? '⛔ Closed / Archived' : (isNew ? '⚡ AI Added 2026' : '✓ AI Verified')}
                       </span>
                     </div>
 
-                    <h3 style={{ margin: '4px 0 6px 0', color: isArchived ? '#4b5563' : '#0f172a', fontSize: 18, fontWeight: 900, lineHeight: 1.3 }}>
+                    <h3 className="text-base font-black text-slate-900 mb-1.5 leading-snug">
                       {s.name}
                     </h3>
 
                     {/* Status & Validity */}
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, fontSize: 12 }}>
-                      <span style={{ color: isArchived ? '#b91c1c' : '#16a34a', fontWeight: 800 }}>
+                    <div className="flex items-center gap-2 mb-3 text-xs">
+                      <span className={`font-bold ${isArchived ? 'text-rose-700' : 'text-emerald-600'}`}>
                         ● {s.status}
                       </span>
                       {s.validUntil && (
-                        <span style={{ color: '#6b7280', fontWeight: 700 }}>
-                          (Validity: {s.validUntil})
+                        <span className="text-slate-400 text-[11px] font-medium">
+                          (Valid: {s.validUntil})
                         </span>
                       )}
                     </div>
 
                     {/* AI Curation Reason */}
                     {s.aiReason && (
-                      <div style={{ 
-                        background: isArchived ? '#fef2f2' : (isNew ? '#fffbeb' : '#f0fdf4'), 
-                        border: `1px dashed ${isArchived ? '#fca5a5' : (isNew ? '#fcd34d' : '#86efac')}`, 
-                        padding: '8px 12px', 
-                        borderRadius: 6, 
-                        marginBottom: 12, 
-                        fontSize: 12, 
-                        fontWeight: 700, 
-                        color: isArchived ? '#991b1b' : (isNew ? '#92400e' : '#166534')
-                      }}>
+                      <div className={`p-2.5 rounded-xl text-xs font-semibold mb-3 border ${
+                        isArchived 
+                          ? 'bg-rose-50 text-rose-900 border-rose-200/60' 
+                          : isNew 
+                          ? 'bg-amber-50 text-amber-900 border-amber-200/60' 
+                          : 'bg-emerald-50/70 text-emerald-800 border-emerald-200/60'
+                      }`}>
                         <strong>🤖 AI Audit Note:</strong> {s.aiReason}
                       </div>
                     )}
 
                     {/* Subsidy Highlight */}
                     {s.subsidy && (
-                      <div style={{ 
-                        background: '#f7faf6', 
-                        border: '1px solid #5ca346', 
-                        padding: '8px 12px', 
-                        borderRadius: 6, 
-                        marginBottom: 12, 
-                        fontSize: 13, 
-                        fontWeight: 900, 
-                        color: '#182c1d'
-                      }}>
-                        🎁 Subsidy: {s.subsidy}
+                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 p-2.5 rounded-xl mb-3 text-xs font-black text-emerald-800 flex items-center gap-1.5">
+                        <span>🎁</span>
+                        <span>Subsidy: {s.subsidy}</span>
                       </div>
                     )}
 
-                    <p style={{ margin: '8px 0 14px 0', color: '#374151', fontSize: 13, lineHeight: 1.5, fontWeight: 600 }}>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-3">
                       {s.description}
                     </p>
 
                     {/* Benefits List */}
                     {s.benefits && s.benefits.length > 0 && (
-                      <div style={{ marginBottom: 14 }}>
-                        <strong style={{ color: '#182c1d', fontSize: 12, display: 'block', marginBottom: 4 }}>Key Scheme Advantages:</strong>
-                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+                      <div className="mb-3">
+                        <strong className="text-xs font-black text-slate-800 block mb-1">Key Advantages:</strong>
+                        <ul className="space-y-1 text-xs text-slate-600 pl-4 list-disc">
                           {s.benefits.map((b, idx) => (
-                            <li key={idx} style={{ marginBottom: 2 }}>{b}</li>
+                            <li key={idx}>{b}</li>
                           ))}
                         </ul>
                       </div>
                     )}
 
                     {/* Eligibility & Documents */}
-                    <div style={{ background: '#f9fafb', padding: '12px', borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 14, fontSize: 12 }}>
-                      <strong style={{ color: '#182c1d', display: 'block', marginBottom: 2 }}>Who Can Apply:</strong>
-                      <span style={{ color: '#4b5563' }}>{s.eligibility}</span>
+                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 mb-4 text-xs space-y-2">
+                      <div>
+                        <strong className="text-slate-800 block text-[11px]">Who Can Apply:</strong>
+                        <span className="text-slate-600">{s.eligibility}</span>
+                      </div>
 
                       {s.documents && s.documents.length > 0 && (
-                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #d1d5db' }}>
-                          <strong style={{ color: '#182c1d', display: 'block', marginBottom: 2 }}>Required Documents:</strong>
-                          <span style={{ color: '#047857', fontWeight: 700 }}>{s.documents.join(' • ')}</span>
-                        </div>
-                      )}
-
-                      {s.helpline && (
-                        <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280' }}>
-                          📞 Toll-Free Helpline: <strong style={{ color: '#182c1d' }}>{s.helpline}</strong>
+                        <div className="pt-2 border-t border-slate-200/60">
+                          <strong className="text-slate-800 block text-[11px]">Required Documents:</strong>
+                          <span className="text-emerald-700 font-bold">{s.documents.join(' • ')}</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions (Direct 1-Click Apply vs Assisted Desk vs Official Portal) */}
-                  <div>
+                  {/* Actions */}
+                  <div className="pt-2">
                     {!isArchived ? (
-                      <div>
-                        {/* Primary 1-Click Direct Portal Button */}
+                      <div className="space-y-2">
                         <button 
                           type="button"
                           onClick={() => handleOpenDirectApply(s)}
-                          className="btn btn-primary"
-                          style={{ 
-                            width: '100%', 
-                            padding: '12px 14px', 
-                            fontSize: 14, 
-                            fontWeight: 900, 
-                            backgroundColor: '#5ca346',
-                            borderColor: '#5ca346',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 8,
-                            boxShadow: '0 4px 10px rgba(92,163,70,0.3)',
-                            marginBottom: 8
-                          }}
+                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <span>⚡ 1-Click Direct Portal Apply</span>
-                          <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: 10 }}>Auto-Fill + Captcha</span>
+                          <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-md font-bold">Auto-Fill</span>
                         </button>
 
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="flex gap-2">
                           {s.applyLink && (
                             <a 
                               href={s.applyLink} 
                               target="_blank" 
                               rel="noreferrer" 
-                              className="btn btn-outline" 
-                              style={{ flex: 1, textDecoration: 'none', padding: '8px 10px', fontSize: 12, fontWeight: 800, textAlign: 'center' }}
+                              className="flex-1 py-2 text-center text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition no-underline"
                             >
-                              Official Site ↗
+                              Official Portal ↗
                             </a>
                           )}
                           <button 
-                            className="btn btn-dark" 
+                            type="button"
+                            className="flex-1 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
                             onClick={() => startApply(s.id)} 
-                            style={{ flex: 1, padding: '8px 10px', fontSize: 12, fontWeight: 800, backgroundColor: '#182c1d' }}
                           >
                             Assisted Desk
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ marginTop: 8, padding: '10px', background: '#fee2e2', borderRadius: 6, textAlign: 'center', fontSize: 12, fontWeight: 800, color: '#991b1b' }}>
-                        ⛔ Applications Halted by Government — View Active 2026 Schemes
+                      <div className="p-2.5 bg-rose-50 rounded-xl text-center text-xs font-bold text-rose-800 border border-rose-100">
+                        ⛔ Applications Halted by Government
                       </div>
                     )}
 
                     {/* Offline Assisted Desk Form Drawer */}
                     {applyState[s.id] && (
-                      <div style={{ marginTop: 14, padding: 16, background: '#f7faf6', border: '2px solid #5ca346', borderRadius: 8 }}>
-                        <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 10, color: '#182c1d' }}>
-                          Register for Assisted Application Submission:
+                      <div className="mt-3 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+                        <div className="text-xs font-black text-emerald-800">
+                          Register for Assisted Application:
                         </div>
-                        <label style={{ color: '#182c1d', fontWeight: 800, fontSize: 12, display: 'block', marginBottom: 2 }}>Farmer Name</label>
                         <input 
                           value={applyState[s.id].name} 
                           onChange={e => updateField(s.id, 'name', e.target.value)} 
                           placeholder="Your full name" 
-                          style={{ backgroundColor: '#ffffff', color: '#182c1d', border: '1px solid #cbd5e1', padding: '8px 10px', width: '100%', borderRadius: 4, marginBottom: 8 }} 
+                          className="w-full p-2 bg-white text-xs rounded-lg border border-slate-200 outline-none"
                         />
-                        <label style={{ color: '#182c1d', fontWeight: 800, fontSize: 12, display: 'block', marginBottom: 2 }}>Mobile Number</label>
                         <input 
                           value={applyState[s.id].phone} 
                           onChange={e => updateField(s.id, 'phone', e.target.value)} 
                           placeholder="10-digit mobile" 
-                          style={{ backgroundColor: '#ffffff', color: '#182c1d', border: '1px solid #cbd5e1', padding: '8px 10px', width: '100%', borderRadius: 4, marginBottom: 8 }} 
+                          className="w-full p-2 bg-white text-xs rounded-lg border border-slate-200 outline-none"
                         />
-                        <label style={{ color: '#182c1d', fontWeight: 800, fontSize: 12, display: 'block', marginBottom: 2 }}>Land & Farm Details</label>
                         <textarea 
                           value={applyState[s.id].details} 
                           onChange={e => updateField(s.id, 'details', e.target.value)} 
-                          placeholder="e.g. Village name, survey number, crop type, acreage" 
+                          placeholder="Village name, survey number, crop type..." 
                           rows="2"
-                          style={{ backgroundColor: '#ffffff', color: '#182c1d', border: '1px solid #cbd5e1', padding: '8px 10px', width: '100%', borderRadius: 4, marginBottom: 10 }} 
+                          className="w-full p-2 bg-white text-xs rounded-lg border border-slate-200 outline-none"
                         />
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div className="flex gap-2 pt-1">
                           <button 
-                            className="btn btn-primary" 
+                            type="button"
+                            className="flex-2 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition"
                             onClick={() => submitApplication(s.id)} 
                             disabled={submitting}
-                            style={{ flex: 2, padding: 10, fontWeight: 900, backgroundColor: '#5ca346' }}
                           >
-                            {submitting ? 'Submitting…' : '✓ Confirm & Get Reference ID'}
+                            {submitting ? 'Submitting…' : '✓ Confirm & Get Ref ID'}
                           </button>
                           <button 
-                            className="btn btn-dark" 
+                            type="button"
+                            className="flex-1 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition"
                             onClick={() => setApplyState(prev => ({ ...prev, [s.id]: null }))}
-                            style={{ flex: 1, padding: 10, backgroundColor: '#182c1d' }}
                           >
                             Cancel
                           </button>
@@ -1078,52 +830,52 @@ export default function Schemes({ onBack }) {
           <div>
             {/* Top Highlight Banner: 3% Central Subvention & 4% Net Rate */}
             <div style={{ 
-              background: 'linear-gradient(135deg, #182c1d 0%, #0f1c13 100%)', 
-              border: '2px solid #5ca346', 
+              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', 
+              border: '2px solid #86efac', 
               borderRadius: 16, 
               padding: '22px 26px', 
               marginBottom: 24, 
-              boxShadow: '0 8px 24px rgba(24, 44, 29, 0.25)',
+              boxShadow: '0 8px 24px rgba(22, 163, 74, 0.25)',
               color: '#ffffff'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                 <div style={{ maxWidth: 780 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                    <span className="badge-sharp" style={{ background: '#5ca346', color: '#ffffff', fontSize: 11, fontWeight: 900 }}>
+                    <span className="badge-sharp" style={{ background: '#22c55e', color: '#ffffff', fontSize: 11, fontWeight: 900 }}>
                       ✓ RBI & NABARD 2026 AUDITED
                     </span>
-                    <span style={{ fontSize: 12, color: '#a7f3d0', fontWeight: 700 }}>
+                    <span style={{ fontSize: 12, color: '#dcfce7', fontWeight: 700 }}>
                       Official Public Sector & Regional Rural Bank Agricultural Credit
                     </span>
                   </div>
                   <h2 style={{ margin: '0 0 8px 0', fontSize: 22, fontWeight: 900 }}>
                     Kisan Credit Card: Nominal 7.0% → Net 4.0% p.a. Prompt Repayment
                   </h2>
-                  <p style={{ margin: 0, fontSize: 13, color: '#d1fae5', lineHeight: 1.5 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: '#f0fdf4', lineHeight: 1.5 }}>
                     Under the Central Government's <strong>Modified Interest Subvention Scheme (MISS)</strong>, farmers who repay crop loans within 12 months receive a <strong>3.0% direct interest subvention</strong> from the Government of India, reducing your actual interest rate to just <strong>4.0% per annum</strong>. Up to ₹1.60 Lakhs (and up to ₹3.00 Lakhs with tie-up arrangements) is 100% collateral-free. MUDRA loans provide collateral-free credit up to ₹10.00 Lakhs for allied agriculture (Dairy, Poultry, Fisheries).
                   </p>
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.08)', padding: '14px 20px', borderRadius: 10, border: '1px solid rgba(92,163,70,0.5)' }}>
-                    <span style={{ fontSize: 11, textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 800 }}>Net Farmer Rate</span>
-                    <div style={{ fontSize: 32, fontWeight: 900, color: '#34d399' }}>4.0% <span style={{ fontSize: 14 }}>p.a.</span></div>
-                    <span style={{ fontSize: 11, color: '#e2e8f0' }}>With 3% Subvention</span>
+                  <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.15)', padding: '14px 20px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.3)' }}>
+                    <span style={{ fontSize: 11, textTransform: 'uppercase', color: '#dcfce7', fontWeight: 800 }}>Net Farmer Rate</span>
+                    <div style={{ fontSize: 32, fontWeight: 900, color: '#ffffff' }}>4.0% <span style={{ fontSize: 14 }}>p.a.</span></div>
+                    <span style={{ fontSize: 11, color: '#f0fdf4' }}>With 3% Subvention</span>
                   </div>
-                  <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.08)', padding: '14px 20px', borderRadius: 10, border: '1px solid rgba(92,163,70,0.5)' }}>
-                    <span style={{ fontSize: 11, textTransform: 'uppercase', color: '#a7f3d0', fontWeight: 800 }}>Zero Collateral Limit</span>
-                    <div style={{ fontSize: 32, fontWeight: 900, color: '#facc15' }}>₹1.60L <span style={{ fontSize: 14 }}>- ₹10L</span></div>
-                    <span style={{ fontSize: 11, color: '#e2e8f0' }}>No Land Mortgage</span>
+                  <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.15)', padding: '14px 20px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.3)' }}>
+                    <span style={{ fontSize: 11, textTransform: 'uppercase', color: '#dcfce7', fontWeight: 800 }}>Zero Collateral Limit</span>
+                    <div style={{ fontSize: 32, fontWeight: 900, color: '#fef08a' }}>₹1.60L <span style={{ fontSize: 14 }}>- ₹10L</span></div>
+                    <span style={{ fontSize: 11, color: '#f0fdf4' }}>No Land Mortgage</span>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Category Filter Chips & Search Bar for Govt Loans */}
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div className="space-y-3.5 mb-6">
+              <div className="flex flex-wrap gap-2 items-center">
                 {[
-                  { id: 'all', label: 'All Govt Loans' },
+                  { id: 'all', label: '🏦 All Govt Loans' },
                   { id: 'crop', label: '🌾 Crop Loans (KCC 4%)' },
                   { id: 'emergency', label: '⚡ Contingency & Gold' },
                   { id: 'infra', label: '🏢 Storage & AIF (3% Subvention)' },
@@ -1132,38 +884,29 @@ export default function Schemes({ onBack }) {
                 ].map(cat => (
                   <button
                     key={cat.id}
+                    type="button"
                     onClick={() => setLoanCategoryFilter(cat.id)}
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      borderRadius: 8,
-                      border: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: loanCategoryFilter === cat.id ? '#5ca346' : '#ffffff',
-                      color: loanCategoryFilter === cat.id ? '#ffffff' : '#182c1d',
-                      boxShadow: loanCategoryFilter === cat.id ? '0 4px 12px rgba(92, 163, 70, 0.4)' : '0 1px 3px rgba(0,0,0,0.08)'
-                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-xs ${
+                      loanCategoryFilter === cat.id
+                        ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/40'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
+                    }`}
                   >
                     {cat.label}
                   </button>
                 ))}
               </div>
 
-              <input
-                type="text"
-                placeholder="🔍 Search govt bank, KCC loan, MUDRA..."
-                value={loanSearchQuery}
-                onChange={e => setLoanSearchQuery(e.target.value)}
-                style={{
-                  padding: '9px 16px',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5e1',
-                  fontSize: 13,
-                  width: '280px',
-                  backgroundColor: '#ffffff'
-                }}
-              />
+              <div className="relative w-full">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Search government bank, KCC loan, MUDRA, interest subvention..."
+                  value={loanSearchQuery}
+                  onChange={e => setLoanSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white text-xs sm:text-sm font-semibold text-slate-800 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-xs placeholder-slate-400 transition"
+                />
+              </div>
             </div>
 
             {/* Government Bank Loans Cards Grid */}
@@ -1176,23 +919,23 @@ export default function Schemes({ onBack }) {
                     padding: 22,
                     background: '#ffffff',
                     color: '#000000',
-                    borderLeft: '6px solid #5ca346',
+                    borderLeft: '6px solid #22c55e',
                     border: '1px solid #e2ece0',
                     borderRadius: 14,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    boxShadow: '0 4px 14px rgba(24, 44, 29, 0.05)'
+                    boxShadow: '0 4px 14px rgba(22, 163, 74, 0.06)'
                   }}
                 >
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                          <span style={{ fontSize: 11, fontWeight: 900, color: '#065f46', textTransform: 'uppercase', background: '#dcfce7', padding: '2px 8px', borderRadius: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 900, color: '#15803d', textTransform: 'uppercase', background: '#dcfce7', padding: '2px 8px', borderRadius: 4 }}>
                             🏛️ {loan.bank}
                           </span>
-                          <span className="badge-sharp" style={{ background: '#15803d', color: '#ffffff', fontSize: 10 }}>
+                          <span className="badge-sharp" style={{ background: '#16a34a', color: '#ffffff', fontSize: 10 }}>
                             Govt Bank Loan
                           </span>
                         </div>
@@ -1208,7 +951,7 @@ export default function Schemes({ onBack }) {
                           {loan.effectiveRate}% <span style={{ fontSize: 11, color: '#64748b' }}>p.a.</span>
                         </div>
                         {loan.subventionRate > 0 && (
-                          <span style={{ fontSize: 10, color: '#047857', fontWeight: 800, background: '#ecfdf5', padding: '1px 5px', borderRadius: 4 }}>
+                          <span style={{ fontSize: 10, color: '#15803d', fontWeight: 800, background: '#ecfdf5', padding: '1px 5px', borderRadius: 4 }}>
                             3% Govt Subvention
                           </span>
                         )}
@@ -1248,7 +991,7 @@ export default function Schemes({ onBack }) {
                       type="button"
                       onClick={() => handleLoanApplyClick(loan)}
                       className="btn btn-primary"
-                      style={{ flex: 1, padding: '10px 14px', fontSize: 13, fontWeight: 900, backgroundColor: '#5ca346' }}
+                      style={{ flex: 1, padding: '10px 14px', fontSize: 13, fontWeight: 900, backgroundColor: '#16a34a' }}
                     >
                       ⚡ Apply with Assisted Verification
                     </button>
@@ -1257,7 +1000,7 @@ export default function Schemes({ onBack }) {
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-dark"
-                      style={{ padding: '10px 14px', fontSize: 13, fontWeight: 800, textDecoration: 'none', backgroundColor: '#182c1d' }}
+                      style={{ padding: '10px 14px', fontSize: 13, fontWeight: 800, textDecoration: 'none', backgroundColor: '#0f172a' }}
                     >
                       Bank Portal ↗
                     </a>
@@ -1308,6 +1051,20 @@ export default function Schemes({ onBack }) {
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>Commercial Terms</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Search Bar for Commercial Loans */}
+            <div className="mb-6">
+              <div className="relative w-full">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Search commercial bank, loan product, category..."
+                  value={loanSearchQuery}
+                  onChange={e => setLoanSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white text-xs sm:text-sm font-semibold text-slate-800 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-xs placeholder-slate-400 transition"
+                />
               </div>
             </div>
 

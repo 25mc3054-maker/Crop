@@ -493,8 +493,49 @@ function VibeCard({
   )
 }
 
+// Default seed items if no posts or vibes are loaded
+const DEFAULT_SEED_VIBES = [
+  {
+    id: 'vibe-seed-1',
+    author: {
+      id: 'rajesh-wheat',
+      name: 'Rajesh Choudhary',
+      username: '@rajesh_wheat',
+      avatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+      hasGreenTick: true
+    },
+    category: 'Crop Care',
+    contentType: 'fieldVibe',
+    audioTrack: 'Saranga Dariya (Folk Beats)',
+    englishContent: 'Drone spraying demonstration over our golden mustard crop. 10 acres covered in just 25 minutes with uniform ultra-low volume droplet distribution!',
+    video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    reactions: { shabaash: 248 },
+    userReaction: null,
+    comments: []
+  },
+  {
+    id: 'vibe-seed-2',
+    author: {
+      id: 'manpreet-dairy',
+      name: 'Manpreet Kaur',
+      username: '@manpreet_dairy',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
+      hasGreenTick: true
+    },
+    category: 'Organic Farming',
+    contentType: 'fieldVibe',
+    audioTrack: 'Harvest Celebration Dhol Beats',
+    englishContent: 'Quick field demonstration of our zero-budget natural Jeevamrutha preparation using indigenous cow dung and jaggery. Soil microbes multiply 100x within 48 hours!',
+    video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
+    reactions: { shabaash: 310 },
+    userReaction: null,
+    comments: []
+  }
+]
+
 export default function VibesFeed({
   posts = [],
+  vibes = [],
   currentUser,
   myCircleList = [],
   onShabaash,
@@ -507,7 +548,12 @@ export default function VibesFeed({
   const [isCopied, setIsCopied] = useState(false)
   const containerRef = useRef(null)
 
-  const vibesList = posts.filter(p => p.contentType === 'fieldVibe')
+  const vibesList = (vibes && vibes.length > 0)
+    ? vibes
+    : (posts && posts.filter(p => p.contentType === 'fieldVibe').length > 0)
+      ? posts.filter(p => p.contentType === 'fieldVibe')
+      : DEFAULT_SEED_VIBES
+
 
   // IntersectionObserver at 0.75 threshold for YouTube Shorts / Instagram Reels Snap Lifecycle
   useEffect(() => {
@@ -630,7 +676,7 @@ export default function VibesFeed({
             <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px 0' }}>
               Share this agricultural short-video advisory with your farming circles and WhatsApp groups.
             </p>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
               <input
                 type="text"
                 readOnly
@@ -665,6 +711,65 @@ export default function VibesFeed({
                 <span>{isCopied ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
+
+            {/* Direct WhatsApp Deep-Link Share Button */}
+            <a
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🌾 Watch this agricultural fieldVibe on KrishiSocial: ${shareModalVibe.englishContent || 'Farmer video advisory'} • ${window.location.origin}/vibes/${shareModalVibe.id}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '10px',
+                background: '#25D366',
+                color: '#ffffff',
+                borderRadius: 8,
+                fontWeight: 800,
+                fontSize: 13,
+                textDecoration: 'none',
+                marginBottom: 14,
+                boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)'
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.173.086.275.072.376-.044.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824z"/>
+              </svg>
+              <span>Share via WhatsApp</span>
+            </a>
+
+            {/* QR Code Graphic Representation */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px dashed #cbd5e1',
+              borderRadius: 10,
+              padding: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              marginBottom: 14
+            }}>
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#111827" strokeWidth="1.5">
+                <rect x="2" y="2" width="8" height="8" rx="1" />
+                <rect x="4" y="4" width="4" height="4" fill="#111827" />
+                <rect x="14" y="2" width="8" height="8" rx="1" />
+                <rect x="16" y="4" width="4" height="4" fill="#111827" />
+                <rect x="2" y="14" width="8" height="8" rx="1" />
+                <rect x="4" y="16" width="4" height="4" fill="#111827" />
+                <rect x="14" y="14" width="3" height="3" fill="#111827" />
+                <rect x="19" y="14" width="3" height="3" fill="#111827" />
+                <rect x="14" y="19" width="3" height="3" fill="#111827" />
+                <rect x="19" y="19" width="3" height="3" fill="#111827" />
+              </svg>
+              <div style={{ textAlign: 'left' }}>
+                <p style={{ margin: 0, fontSize: 11.5, fontWeight: 800, color: '#111827' }}>Scan QR Code on Field</p>
+                <p style={{ margin: 0, fontSize: 10.5, color: '#64748b' }}>Instant mobile playback for community farmers</p>
+              </div>
+            </div>
+
             <button
               onClick={() => setShareModalVibe(null)}
               style={{

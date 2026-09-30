@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+  
+  <!-- Primary Landing Page -->
+  <url>
+    <loc>https://krishi-net.org/</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.00</priority>
+  </url>
+
+  <!-- Live Mandi Benchmark Market Prices -->
+  <url>
+    <loc>https://krishi-net.org/#/market-prices</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <!-- Government Schemes & Subsidies Portal -->
+  <url>
+    <loc>https://krishi-net.org/#/schemes</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.90</priority>
+  </url>
+
+  <!-- AI Soil Health Analyser & NPK Recommendations -->
+  <url>
+    <loc>https://krishi-net.org/#/soil-analyser</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Hyperlocal 7-Day Weather & Monsoon Alerts -->
+  <url>
+    <loc>https://krishi-net.org/#/weather</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Crop Planner & Seasonal Cultivation Cycle -->
+  <url>
+    <loc>https://krishi-net.org/#/crop-planner</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+  </url>
+
+  <!-- AI Crop Pest & Leaf Disease Diagnostic Doctor -->
+  <url>
+    <loc>https://krishi-net.org/#/pest-disease</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Concessional Kisan Credit, Crop Loans & Insurance -->
+  <url>
+    <loc>https://krishi-net.org/#/finance</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+  </url>
+
+  <!-- Kisan Community Knowledge Forum -->
+  <url>
+    <loc>https://krishi-net.org/#/community-news</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.75</priority>
+  </url>
+
+  <!-- Agriculture Video Tutorials & Best Practices -->
+  <url>
+    <loc>https://krishi-net.org/#/tutorials</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.70</priority>
+  </url>
+
+  <!-- Farmer Portal Authentication -->
+  <url>
+    <loc>https://krishi-net.org/#/login</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.60</priority>
+  </url>
+
+  <!-- Free Farmer Registration -->
+  <url>
+    <loc>https://krishi-net.org/#/register</loc>
+    <lastmod>2026-09-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.60</priority>
+  </url>
+
+</urlset>

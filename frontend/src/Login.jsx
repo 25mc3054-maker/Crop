@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from './config'
+import { saveFarmerUserSession } from './userSession'
 
 export default function Login({ onDone }) {
-  const [phone, setPhone] = useState('7816086663')
+  const [phone, setPhone] = useState(() => localStorage.getItem('farmer_phone') || '')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
@@ -14,18 +15,19 @@ export default function Login({ onDone }) {
 
   const bypassAccess = async () => {
     setLoading(true)
+    const targetPhone = phone.trim() || '7816086663'
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/login`, { phone: '7816086663', password: 'password123' })
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, { phone: targetPhone, password: 'password123' })
       if (res.data?.token) {
-        localStorage.setItem('farmer_token', res.data.token)
+        saveFarmerUserSession(res.data.user || { phone: targetPhone }, res.data.token)
         onDone && onDone()
         return
       }
     } catch (e) {
       console.warn('Backend login fallback used:', e)
     }
-    const fallbackToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(JSON.stringify({ phone: '7816086663', name: 'Greeshmanth', village: 'vissannapeta' })) + '.bypass'
-    localStorage.setItem('farmer_token', fallbackToken)
+    const fallbackToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(JSON.stringify({ phone: targetPhone, name: 'Verified Farmer', village: 'Regional Hub' })) + '.bypass'
+    saveFarmerUserSession({ phone: targetPhone, name: 'Verified Farmer', village: 'Regional Hub' }, fallbackToken)
     onDone && onDone()
     setLoading(false)
   }
@@ -36,7 +38,7 @@ export default function Login({ onDone }) {
     if (cleanDigits.length < 7 || cleanDigits.length > 15) return alert('Enter valid phone number (7 to 15 digits)')
     setLoading(true)
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/send-otp`, { phone })
+      const res = await axios.post(`${API_BASE_URL}/auth/send-otp`, { phone: cleanDigits })
       setOtpSent(true)
       if (res.data.devOtp) {
         setDemoOtp(res.data.devOtp)
@@ -53,16 +55,12 @@ export default function Login({ onDone }) {
     e && e.preventDefault()
     if (!otp || otp.length !== 6) return alert('Enter valid 6-digit OTP')
     setLoading(true)
+    const cleanDigits = phone.replace(/\D/g, '')
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/verify-otp`, { phone, otp })
-      localStorage.setItem('farmer_token', res.data.token)
-      try {
-        const p = JSON.parse(atob(res.data.token.split('.')[1]))
-        if (p && p.name) {
-          localStorage.setItem('farmer_name', p.name)
-          localStorage.setItem('farmer_registered_name', p.name)
-        }
-      } catch (err) {}
+      const res = await axios.post(`${API_BASE_URL}/auth/verify-otp`, { phone: cleanDigits, otp })
+      if (res.data?.token) {
+        saveFarmerUserSession(res.data.user, res.data.token)
+      }
       alert('Login successful!')
       onDone && onDone()
     } catch (err) {
@@ -77,15 +75,10 @@ export default function Login({ onDone }) {
     if (!password) return alert('Please enter your password')
     setLoading(true)
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/login`, { phone, password })
-      localStorage.setItem('farmer_token', res.data.token)
-      try {
-        const p = JSON.parse(atob(res.data.token.split('.')[1]))
-        if (p && p.name) {
-          localStorage.setItem('farmer_name', p.name)
-          localStorage.setItem('farmer_registered_name', p.name)
-        }
-      } catch (err) {}
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, { phone: cleanDigits, password })
+      if (res.data?.token) {
+        saveFarmerUserSession(res.data.user, res.data.token)
+      }
       alert('Login successful!')
       onDone && onDone()
     } catch (err) {

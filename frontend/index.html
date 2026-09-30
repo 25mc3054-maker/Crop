@@ -1,13 +1,157 @@
 <!doctype html>
-<html>
+<html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Krishi-Net</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- Primary Meta Tags -->
+    <title>Krishi-Net 🌱 Next-Gen AI Agricultural Intelligence & Kisan Super App</title>
+    <meta name="title" content="Krishi-Net 🌱 Next-Gen AI Agricultural Intelligence & Kisan Super App" />
+    <meta name="description" content="Empowering Indian farmers with live mandi commodity prices, AI agronomy disease diagnosis, NPK soil health testing, concessional 4% Kisan Credit loans, and government agriculture schemes." />
+    <meta name="keywords" content="krishi net, agriculture app, mandi rates, live crop prices, APMC market price, AI crop diagnosis, soil health card, NPK fertilizer calculator, Kisan credit card, PM-Kisan scheme, agriculture subsidies, farmer app India, weather forecast for farmers" />
+    <meta name="author" content="Krishi-Net Agricultural Intelligence" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="theme-color" content="#15803d" />
+    <meta name="application-name" content="Krishi-Net" />
+    <meta name="apple-mobile-web-app-title" content="Krishi-Net" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="canonical" href="https://krishi-net.org/" />
+
+    <!-- Open Graph / Facebook / WhatsApp -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Krishi-Net" />
+    <meta property="og:url" content="https://krishi-net.org/" />
+    <meta property="og:title" content="Krishi-Net 🌱 Next-Gen AI Agricultural Intelligence & Kisan Super App" />
+    <meta property="og:description" content="Real-time mandi prices, AI crop leaf disease diagnosis, soil testing insights, concessional credit, and government farming schemes all in one unified platform." />
+    <meta property="og:image" content="/hero_plants.jpg" />
+    <meta property="og:image:alt" content="Krishi-Net Smart Farming Agricultural Intelligence Dashboard" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://krishi-net.org/" />
+    <meta name="twitter:title" content="Krishi-Net 🌱 Next-Gen AI Agricultural Intelligence" />
+    <meta name="twitter:description" content="Empowering Indian farmers with live mandi rates, AI crop disease diagnosis, soil health testing, and government schemes." />
+    <meta name="twitter:image" content="/hero_plants.jpg" />
+    <meta name="twitter:image:alt" content="Krishi-Net Agricultural Platform" />
+
+    <!-- PWA Manifest & Icons -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#0ea66a" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>" />
+    <link rel="apple-touch-icon" href="/hero_plants.jpg" />
+
+    <!-- DNS Prefetch and Preconnects -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+    <!-- Tailwind CSS (CDN configuration) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            },
+            colors: {
+              farm: {
+                50: '#f0fdf4',
+                100: '#dcfce7',
+                200: '#bbf7d0',
+                300: '#86efac',
+                400: '#4ade80',
+                500: '#22c55e',
+                600: '#16a34a',
+                700: '#15803d',
+                800: '#166534',
+                900: '#14532d',
+                950: '#052e16'
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Schema.org JSON-LD Structured Data: WebApplication, Organization, and FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://krishi-net.org/#webapp",
+          "name": "Krishi-Net Agricultural Intelligence",
+          "url": "https://krishi-net.org/",
+          "applicationCategory": "BusinessApplication, Agriculture",
+          "operatingSystem": "All",
+          "browserRequirements": "Requires JavaScript. Requires HTML5.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "INR"
+          },
+          "description": "Comprehensive agricultural intelligence portal providing real-time mandi prices, AI agronomy diagnosis, soil health analysis, concessional Kisan credit, and government farming schemes.",
+          "featureList": [
+            "Live APMC & Mandi Commodity Benchmark Prices",
+            "AI Leaf Disease & Pest Diagnosis Doctor",
+            "Soil Health Testing & NPK Advisory",
+            "Concessional 4% Kisan Credit Card Loans & Grants",
+            "Central and State Government Agriculture Schemes Portal",
+            "Hyperlocal Weather & Monsoon Alerts",
+            "Multilingual Support in 10+ Indian Languages"
+          ]
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://krishi-net.org/#organization",
+          "name": "Krishi-Net",
+          "url": "https://krishi-net.org/",
+          "logo": "https://krishi-net.org/hero_plants.jpg",
+          "description": "Next-generation agricultural technology initiative empowering farmers with digital tools and AI insights."
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://krishi-net.org/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How can I check real-time mandi and commodity market prices on Krishi-Net?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Krishi-Net aggregates live APMC market data across commodities like Paddy, Wheat, Cotton, Mustard, and Soybeans with 7-day, 15-day, and 30-day interactive price trend charts."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does the Krishi AI Agronomy Disease Diagnosis work?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Farmers can upload crop leaf photos or describe symptoms using voice notes. The AI Agronomist analyzes the pathology and provides instant treatment recommendations, organic remedies, and fertilizer dosages."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I check eligibility for PM-Kisan and Government Agriculture Schemes?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The Krishi-Net Schemes portal automatically matches your land size, state, and crop type against all active Central and State subsidy schemes and provides one-click application assistance."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
-  <body>
+  <body class="bg-slate-50 text-slate-900 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

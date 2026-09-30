@@ -14,7 +14,7 @@ import {
 // Single Source of Truth Recursive Helper: Dynamic Comment Count Calculation
 export const countTotalComments = (comments = []) => {
   if (!Array.isArray(comments)) return 0
-  return comments.reduce((acc, c) => acc + 1 + countTotalComments(c.replies || []), 0)
+  return comments.length + comments.reduce((acc, c) => acc + (c.replies?.length || 0), 0)
 }
 
 // Recursive Helper: Insert Nested Reply into Comment Hierarchy

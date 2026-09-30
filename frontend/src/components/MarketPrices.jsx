@@ -2,16 +2,17 @@ import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from '../config'
 import { REGIONAL_LANGUAGES, DUAL_DICTIONARY, getDualCropName, UI_LANG_STRINGS, playDualVoice } from '../languageHelper'
+import { getCropAgronomyDetails } from '../cropKnowledgeData'
 import Navbar from './Navbar'
 
-// Deterministic price history generation for every crop (7d, 15d, 30d)
+// Deterministic price history generation for every crop (7d, 15d, 30d, 3m, 6m, 1y)
 export function getCropHistory(crop, timeframe = '7d') {
-  const days = timeframe === '30d' ? 30 : timeframe === '15d' ? 15 : 7;
+  const days = timeframe === '1y' ? 365 : timeframe === '6m' ? 180 : timeframe === '3m' ? 90 : timeframe === '30d' ? 30 : timeframe === '15d' ? 15 : 7;
   const currentPrice = Number(crop.modalPrice || crop.priceInr || 2000);
   const change24h = Number(crop.change24h || 0);
-  const totalChangePct = change24h !== 0 ? change24h * (days / 7) : 1.2;
+  const totalChangePct = change24h !== 0 ? change24h * (Math.min(days, 60) / 7) : 1.2;
   const baseDelta = (totalChangePct / 100) * currentPrice;
-  const volatility = Math.max(currentPrice * 0.015, 12);
+  const volatility = Math.max(currentPrice * 0.018, 14);
 
   let hash = 0;
   const key = String(crop.symbol || crop.crop || 'CROP');
@@ -20,27 +21,31 @@ export function getCropHistory(crop, timeframe = '7d') {
     hash |= 0;
   }
 
+  // Determine number of sampling points for clean rendering
+  const numPoints = days > 180 ? 36 : days > 60 ? 30 : days > 15 ? 24 : days;
+  const stepDays = days / (numPoints - 1);
   const points = [];
   const now = new Date();
 
-  for (let i = days - 1; i >= 0; i--) {
+  for (let idx = 0; idx < numPoints; idx++) {
+    const daysAgo = Math.round((numPoints - 1 - idx) * stepDays);
     const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    d.setDate(d.getDate() - daysAgo);
+    const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(days > 180 ? { year: '2-digit' } : {}) });
 
-    if (i === 0) {
+    if (daysAgo === 0 || idx === numPoints - 1) {
       points.push({
-        index: days - 1,
+        index: idx,
         dayLabel: 'Today',
         dateStr: dateLabel,
         price: currentPrice
       });
     } else {
-      const progress = (days - 1 - i) / (days - 1);
-      const wave = Math.sin(((hash % 100) + i * 23) * 0.1) * volatility;
+      const progress = idx / (numPoints - 1);
+      const wave = Math.sin(((hash % 100) + idx * 19) * 0.2) * volatility + Math.cos(idx * 0.35) * (volatility * 0.6);
       const sim = Math.round(currentPrice - (baseDelta * (1 - progress)) + wave);
       points.push({
-        index: days - 1 - i,
+        index: idx,
         dayLabel: dateLabel,
         dateStr: dateLabel,
         price: Math.max(10, sim)
@@ -68,16 +73,16 @@ export function getCropHistory(crop, timeframe = '7d') {
   };
 }
 
-// Mini Sparkline Graph for each card and table row
+// Mini Sparkline Graph for table row
 export function MiniPriceSparkline({ crop }) {
   const history = getCropHistory(crop, '7d');
   const { points, min, max, isUp, netChangePct } = history;
   const range = max - min || 1;
 
-  const width = 200;
-  const height = 44;
-  const padX = 6;
-  const padY = 6;
+  const width = 160;
+  const height = 36;
+  const padX = 4;
+  const padY = 4;
 
   const coords = points.map((p, idx) => {
     const x = padX + (idx / (points.length - 1)) * (width - 2 * padX);
@@ -92,38 +97,35 @@ export function MiniPriceSparkline({ crop }) {
   const fillColor = isUp ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)';
 
   return (
-    <div style={{ marginTop: 8, padding: '6px 8px', background: '#f8faf8', border: '1px solid #e2ece0', borderRadius: '0px' }}>
+    <div style={{ padding: '4px 6px', background: '#f8faf8', border: '1px solid #e2ece0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-          📈 7-Day Price Trend
+        <span style={{ fontSize: 9, fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+          7D Trend
         </span>
-        <span style={{ fontSize: 10, fontWeight: 900, color: strokeColor }}>
+        <span style={{ fontSize: 9, fontWeight: 900, color: strokeColor }}>
           {isUp ? `+${netChangePct}%` : `${netChangePct}%`}
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 34, display: 'block' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 26, display: 'block' }}>
         <path d={areaD} fill={fillColor} />
-        <path d={pathD} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={coords[0].x} cy={coords[0].y} r="2.5" fill={strokeColor} />
-        <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="3.5" fill={strokeColor} stroke="#ffffff" strokeWidth="1.5" />
+        <path d={pathD} fill="none" stroke={strokeColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="2.5" fill={strokeColor} />
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b', fontWeight: 700, marginTop: 1 }}>
-        <span>₹{coords[0].price}</span>
-        <span style={{ color: strokeColor, fontWeight: 800 }}>₹{coords[coords.length - 1].price}</span>
-      </div>
     </div>
   );
 }
 
-// Full Interactive Price Chart with Timeframes & Tooltips
+// Full Interactive Price Chart with Timeframes, 4 Stat Cards & Movable Tooltip (Blueprint Image 1)
 export function FullPriceGraph({ crop, timeframe = '7d', setTimeframe }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const svgRef = useRef(null);
+
   const history = getCropHistory(crop, timeframe);
   const { points, min, max, isUp, netChange, netChangePct, startPrice, endPrice } = history;
   const range = max - min || 1;
 
-  const width = 480;
-  const height = 180;
+  const width = 540;
+  const height = 210;
   const padLeft = 48;
   const padRight = 16;
   const padTop = 18;
@@ -142,74 +144,87 @@ export function FullPriceGraph({ crop, timeframe = '7d', setTimeframe }) {
   const areaD = `${pathD} L ${(padLeft + plotW).toFixed(1)} ${(padTop + plotH).toFixed(1)} L ${padLeft} ${(padTop + plotH).toFixed(1)} Z`;
 
   const strokeColor = isUp ? '#16a34a' : '#dc2626';
-  const gradId = `full-grad-${crop.symbol}-${timeframe}`;
+  const gradId = `full-grad-${crop.symbol || 'crop'}-${timeframe}`;
 
-  const hoveredPoint = hoveredIndex !== null ? coords[hoveredIndex] : coords[coords.length - 1];
+  // Handle pointer/touch move for smooth movable price dot & tooltip
+  const handlePointerMove = (e) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+    if (clientX === null) return;
+    const svgX = ((clientX - rect.left) / rect.width) * width;
+    
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    coords.forEach((pt, i) => {
+      const diff = Math.abs(pt.x - svgX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    });
+    setHoveredIndex(closestIdx);
+  };
+
+  const activePoint = hoveredIndex !== null ? coords[hoveredIndex] : coords[coords.length - 1];
+  const unitText = crop.unit === 'litre' ? 'Per Litre' : crop.unit === 'kg' ? 'Per kg' : 'Per Quintal (100kg)';
 
   return (
     <div>
-      {/* Timeframe selector tabs */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 3, border: '1px solid #cbd5e1' }}>
-          {['7d', '15d', '30d'].map(tf => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              style={{
-                padding: '6px 14px',
-                fontSize: 12,
-                fontWeight: 900,
-                border: 'none',
-                background: timeframe === tf ? '#182c1d' : 'transparent',
-                color: timeframe === tf ? '#ffffff' : '#334155',
-                cursor: 'pointer'
-              }}
-            >
-              {tf === '7d' ? '7 Days' : tf === '15d' ? '15 Days' : '30 Days'}
-            </button>
-          ))}
-        </div>
-
-        {/* Hovered or Current Price Point */}
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>
-            {hoveredPoint.dayLabel} Price:
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#065f46' }}>
-            ₹{hoveredPoint.price.toLocaleString('en-US')}
-          </div>
-        </div>
-      </div>
-
-      {/* 4 Summary Metric Tiles */}
+      {/* 4 Summary Metric Tiles - Exactly as shown in Blueprint Image 1 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
-        <div style={{ background: '#ffffff', padding: '8px 10px', border: '1px solid #cbd5e1' }}>
-          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Current Price</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a', marginTop: 2 }}>₹{endPrice}</div>
+        <div style={{ background: '#f8fafc', padding: '10px 12px', border: '1.5px solid #cbd5e1', borderRadius: '4px' }}>
+          <div style={{ fontSize: 10, color: '#475569', fontWeight: 800, textTransform: 'uppercase' }}>Current Price</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', marginTop: 2 }}>₹{endPrice.toLocaleString('en-US')}</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>{unitText}</div>
         </div>
-        <div style={{ background: '#ffffff', padding: '8px 10px', border: '1px solid #cbd5e1' }}>
-          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Period High</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: '#16a34a', marginTop: 2 }}>₹{max}</div>
+
+        <div style={{ background: '#f0fdf4', padding: '10px 12px', border: '1.5px solid #86efac', borderRadius: '4px' }}>
+          <div style={{ fontSize: 10, color: '#166534', fontWeight: 800, textTransform: 'uppercase' }}>Period High</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#16a34a', marginTop: 2 }}>₹{max.toLocaleString('en-US')}</div>
+          <div style={{ fontSize: 10, color: '#15803d', fontWeight: 600 }}>Peak in selected window</div>
         </div>
-        <div style={{ background: '#ffffff', padding: '8px 10px', border: '1px solid #cbd5e1' }}>
-          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Period Low</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: '#dc2626', marginTop: 2 }}>₹{min}</div>
+
+        <div style={{ background: '#fef2f2', padding: '10px 12px', border: '1.5px solid #fca5a5', borderRadius: '4px' }}>
+          <div style={{ fontSize: 10, color: '#991b1b', fontWeight: 800, textTransform: 'uppercase' }}>Period Low</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#dc2626', marginTop: 2 }}>₹{min.toLocaleString('en-US')}</div>
+          <div style={{ fontSize: 10, color: '#b91c1c', fontWeight: 600 }}>Lowest in selected window</div>
         </div>
-        <div style={{ background: '#ffffff', padding: '8px 10px', border: '1px solid #cbd5e1' }}>
-          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Net Change</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: isUp ? '#16a34a' : '#dc2626', marginTop: 2 }}>
-            {isUp ? `+₹${netChange}` : `-₹${Math.abs(netChange)}`} ({isUp ? `+${netChangePct}%` : `${netChangePct}%`})
+
+        <div style={{ background: isUp ? '#f0fdf4' : '#fef2f2', padding: '10px 12px', border: `1.5px solid ${isUp ? '#86efac' : '#fca5a5'}`, borderRadius: '4px' }}>
+          <div style={{ fontSize: 10, color: isUp ? '#166534' : '#991b1b', fontWeight: 800, textTransform: 'uppercase' }}>NET Change</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: isUp ? '#16a34a' : '#dc2626', marginTop: 2 }}>
+            {isUp ? `+₹${netChange.toLocaleString('en-US')}` : `-₹${Math.abs(netChange).toLocaleString('en-US')}`}
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: isUp ? '#15803d' : '#b91c1c' }}>
+            {isUp ? `▲ +${netChangePct}%` : `▼ ${netChangePct}%`}
           </div>
         </div>
       </div>
 
-      {/* SVG Line Chart */}
-      <div style={{ background: '#ffffff', border: '1.5px solid #d1d5db', padding: '14px 10px 8px', position: 'relative' }}>
-        <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 210, display: 'block', overflow: 'visible' }}>
+      {/* SVG Interactive Wave Graph with Movable Tooltip */}
+      <div 
+        style={{ 
+          background: '#ffffff', 
+          border: '1.5px solid #d1d5db', 
+          borderRadius: '4px',
+          padding: '12px 10px 6px', 
+          position: 'relative',
+          userSelect: 'none'
+        }}
+      >
+        <svg 
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`} 
+          style={{ width: '100%', height: 210, display: 'block', overflow: 'visible', cursor: 'crosshair' }}
+          onMouseMove={handlePointerMove}
+          onTouchMove={handlePointerMove}
+          onMouseLeave={() => setHoveredIndex(null)}
+        >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
-              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.01" />
             </linearGradient>
           </defs>
 
@@ -220,8 +235,8 @@ export function FullPriceGraph({ crop, timeframe = '7d', setTimeframe }) {
             return (
               <g key={i}>
                 <line x1={padLeft} y1={y} x2={padLeft + plotW} y2={y} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3,3" />
-                <text x={padLeft - 6} y={y + 3} textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="700">
-                  ₹{priceVal}
+                <text x={padLeft - 6} y={y + 3.5} textAnchor="end" fontSize="9.5" fill="#64748b" fontWeight="700">
+                  ₹{priceVal.toLocaleString('en-US')}
                 </text>
               </g>
             );
@@ -230,61 +245,80 @@ export function FullPriceGraph({ crop, timeframe = '7d', setTimeframe }) {
           {/* Area Fill */}
           <path d={areaD} fill={`url(#${gradId})`} />
 
-          {/* Line */}
+          {/* Main Curve Line */}
           <path d={pathD} fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Interactive Data Points */}
-          {coords.map((c, i) => {
-            const isHovered = hoveredIndex === i;
-            return (
-              <g key={i}>
-                <circle
-                  cx={c.x}
-                  cy={c.y}
-                  r="12"
-                  fill="transparent"
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={() => setHoveredIndex(i)}
-                  onMouseLeave={() => setHoveredIndex(null)}
-                />
-                <circle
-                  cx={c.x}
-                  cy={c.y}
-                  r={isHovered ? 6 : (i === coords.length - 1 ? 4.5 : 3)}
-                  fill={isHovered ? '#182c1d' : strokeColor}
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                  style={{ pointerEvents: 'none', transition: 'r 0.15s ease' }}
-                />
-              </g>
-            );
-          })}
+          {/* Dotted Vertical Movable Line & Dot */}
+          {activePoint && (
+            <g>
+              <line 
+                x1={activePoint.x} 
+                y1={padTop} 
+                x2={activePoint.x} 
+                y2={padTop + plotH} 
+                stroke="#64748b" 
+                strokeWidth="1.5" 
+                strokeDasharray="4,4" 
+              />
+              <circle cx={activePoint.x} cy={activePoint.y} r="5.5" fill={strokeColor} stroke="#ffffff" strokeWidth="2" />
+            </g>
+          )}
 
-          {/* X Axis Labels */}
-          {coords.filter((_, idx) => idx === 0 || idx === Math.floor(coords.length / 2) || idx === coords.length - 1).map((c, idx) => (
-            <text
-              key={idx}
-              x={c.x}
-              y={height - 6}
-              textAnchor={idx === 0 ? 'start' : idx === 2 ? 'end' : 'middle'}
-              fontSize="10"
-              fill="#64748b"
-              fontWeight="700"
-            >
+          {/* Floating Movable Tooltip (Price Movable) */}
+          {activePoint && (
+            <g transform={`translate(${Math.max(padLeft, Math.min(width - padRight - 120, activePoint.x - 60))}, ${Math.max(4, activePoint.y - 42)})`}>
+              <rect width="120" height="34" rx="4" fill="#0f172a" fillOpacity="0.95" />
+              <text x="60" y="13" textAnchor="middle" fill="#94a3b8" fontSize="8.5" fontWeight="700">
+                {activePoint.dateStr}
+              </text>
+              <text x="60" y="27" textAnchor="middle" fill="#4ade80" fontSize="11.5" fontWeight="900">
+                ₹{activePoint.price.toLocaleString('en-US')}
+              </text>
+            </g>
+          )}
+
+          {/* X-Axis Date Labels */}
+          {coords.filter((_, idx) => idx === 0 || idx === Math.floor(coords.length / 2) || idx === coords.length - 1).map((c, i) => (
+            <text key={i} x={c.x} y={height - 6} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} fontSize="9" fill="#94a3b8" fontWeight="700">
               {c.dateStr}
             </text>
           ))}
         </svg>
+
+        <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', fontWeight: 600, marginTop: 4 }}>
+          👆 Hover or drag cursor across chart to inspect daily benchmark quotes
+        </div>
       </div>
 
-      {/* Movement Insight */}
-      <div style={{ marginTop: 12, padding: '10px 14px', background: isUp ? '#f0fdf4' : '#fef2f2', border: `1px solid ${isUp ? '#86efac' : '#fca5a5'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: isUp ? '#166534' : '#991b1b' }}>
-          {isUp ? '📈 Price Momentum: Rising Trend' : '📉 Price Momentum: Softening Trend'}
-        </div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
-          Net {isUp ? '+' : ''}{netChangePct}% across {timeframe === '7d' ? '7 days' : timeframe === '15d' ? '15 days' : '30 days'}
-        </div>
+      {/* Timeframe Selector Buttons - Exactly as in Blueprint Image 1 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, marginTop: 12 }}>
+        {[
+          { id: '7d', label: '7 days' },
+          { id: '15d', label: '15 days' },
+          { id: '30d', label: '30 days' },
+          { id: '3m', label: '3 month' },
+          { id: '6m', label: '6 month' },
+          { id: '1y', label: '1 Year' }
+        ].map(tf => (
+          <button
+            key={tf.id}
+            type="button"
+            onClick={() => setTimeframe(tf.id)}
+            style={{
+              padding: '8px 2px',
+              fontSize: 11.5,
+              fontWeight: 800,
+              border: timeframe === tf.id ? '2px solid #16a34a' : '1px solid #cbd5e1',
+              background: timeframe === tf.id ? '#e8f9ee' : '#ffffff',
+              color: timeframe === tf.id ? '#166534' : '#334155',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {tf.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1166,14 +1200,25 @@ export default function MarketPrices({ onBack }) {
   const [regLang, setRegLang] = useState(() => localStorage.getItem('krishi_secondary_lang') || 'none')
   const [viewMode, setViewMode] = useState('kisan') // 'kisan' | 'table'
   const [selectedCrop, setSelectedCrop] = useState(null)
-  const [modalTab, setModalTab] = useState('graph') // 'graph' | 'calc'
-  const [graphTimeframe, setGraphTimeframe] = useState('7d') // '7d' | '15d' | '30d'
+  const [modalTab, setModalTab] = useState('graph') // 'graph' | 'calc' | 'more'
+  const [graphTimeframe, setGraphTimeframe] = useState('7d') // '7d' | '15d' | '30d' | '3m' | '6m' | '1y'
   const [calcQty, setCalcQty] = useState(10)
   const [speakingCrop, setSpeakingCrop] = useState(null)
   const [isListening, setIsListening] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
-  const recognitionRef = useRef(null)
+  const [showOnlySaved, setShowOnlySaved] = useState(false)
+  
+  // Persisted Saved / Bookmarked crops
+  const [savedCrops, setSavedCrops] = useState(() => {
+    try {
+      const saved = localStorage.getItem('krishi_saved_crops')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
 
+  const recognitionRef = useRef(null)
   const isNone = regLang === 'none'
   const currentStr = UI_LANG_STRINGS[regLang] || UI_LANG_STRINGS.none
 
@@ -1224,10 +1269,25 @@ export default function MarketPrices({ onBack }) {
     }
   }
 
+  // Toggle Save / Bookmark Crop
+  const toggleSaveCrop = (item, e) => {
+    e && e.stopPropagation()
+    const id = item.symbol || item.crop
+    setSavedCrops(prev => {
+      const exists = prev.includes(id)
+      const updated = exists ? prev.filter(x => x !== id) : [...prev, id]
+      try {
+        localStorage.setItem('krishi_saved_crops', JSON.stringify(updated))
+      } catch (err) {
+        console.warn('Failed to save crop:', err)
+      }
+      return updated
+    })
+  }
+
   const openCropGraphModal = (item) => {
     setSelectedCrop(item)
     setModalTab('graph')
-    setCalcQty(10)
   }
 
   const openCropCalcModal = (item) => {
@@ -1236,11 +1296,16 @@ export default function MarketPrices({ onBack }) {
     setCalcQty(10)
   }
 
+  const openCropMoreModal = (item) => {
+    setSelectedCrop(item)
+    setModalTab('more')
+  }
+
   // Voice Announcement (Speaks Regional First, English Second)
   const handleSpeakCropDual = (item, e) => {
     e && e.stopPropagation()
     const cropInfo = getDualCropName(item.symbol || item.crop, regLang)
-    const priceNum = item.priceInr.toLocaleString('en-US')
+    const priceNum = (item.modalPrice || item.priceInr || 0).toLocaleString('en-US')
     const unitEn = item.unit === 'litre' ? 'per litre' : item.unit === 'kg' ? 'per kg' : 'per quintal (100 kg)'
 
     let enTrend = item.change24h > 0 ? 'Price is rising today.' : item.change24h < 0 ? 'Price is slightly down today.' : 'Price is steady today.'
@@ -1323,55 +1388,34 @@ export default function MarketPrices({ onBack }) {
     }
   }
 
-  const openCropModal = (item) => {
-    setSelectedCrop(item)
-    setCalcQty(10)
-    loadTrend(item)
-  }
-
-  const loadTrend = async (item) => {
-    setTrendLoading(true)
-    try {
-      const res = await axios.get(`${API_BASE_URL}/commodities/trends`, {
-        params: { symbol: item.symbol, crop: item.name }
-      })
-      if (res.data && res.data.points) {
-        setTrendData(res.data)
-      }
-    } catch (e) {
-      console.warn('Trend fetch error', e)
-    } finally {
-      setTrendLoading(false)
-    }
-  }
-
   const speakCalculatedTotalDual = () => {
     if (!selectedCrop) return
-    const total = Math.round(selectedCrop.priceInr * calcQty).toLocaleString('en-US')
+    const rate = Number(selectedCrop.modalPrice || selectedCrop.priceInr || 0)
+    const total = Math.round(rate * calcQty).toLocaleString('en-US')
     const cropInfo = getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang)
 
-    const enText = `For ${calcQty} quintals of ${cropInfo.en}, total amount you will receive is ₹${total}.`
+    const enText = `For ${calcQty} quintals of ${cropInfo.en}, total benchmark value is ₹${total}.`
     let regText = `${calcQty} quintal ${cropInfo.reg || cropInfo.en} = ₹${total}`
-    if (regLang === 'te') regText = `${calcQty} క్వింటాళ్ల ${cropInfo.reg || cropInfo.en} అమ్మితే మీకు మొత్తం ${total} రూపాయలు వస్తాయి.`
-    else if (regLang === 'kn') regText = `${calcQty} ಕ್ವಿಂಟಾಲ್ ${cropInfo.reg || cropInfo.en} ಮಾರಾಟಕ್ಕೆ ನಿಮಗೆ ಒಟ್ಟು ${total} ರೂಪಾಯಿ ಸಿಗುತ್ತದೆ.`
-    else if (regLang === 'ta') regText = `${calcQty} குவிண்டால் ${cropInfo.reg || cropInfo.en} விற்றால் உங்களுக்கு மொத்தம் ${total} ரூபாய் கிடைக்கும்.`
-    else if (regLang === 'ml') regText = `${calcQty} ക്വിന്റൽ ${cropInfo.reg || cropInfo.en} വിൽക്കുമ്പോൾ നിങ്ങൾക്ക് ആകെ ${total} രൂപ ലഭിക്കും.`
-    else if (regLang === 'mr') regText = `${calcQty} क्विंटल ${cropInfo.reg || cropInfo.en} विकल्यावर तुम्हाला एकूण ${total} रुपये मिळतील.`
-    else if (regLang === 'bn') regText = `${calcQty} কুইন্টাল ${cropInfo.reg || cropInfo.en} বিক্রিতে মোট ${total} টাকা পাবেন।`
-    else if (regLang === 'pa') regText = `${calcQty} ਕੁਇੰਟਲ ${cropInfo.reg || cropInfo.en} ਵੇਚਣ ਤੇ ਕੁੱਲ ${total} ਰੁਪਏ ਮਿਲਣਗੇ।`
-    else if (regLang === 'gu') regText = `${calcQty} ક્વિન્ટલ ${cropInfo.reg || cropInfo.en} વેચવા પર તમને કુલ ${total} રૂપિયા મળશે.`
-    else if (regLang === 'or') regText = `${calcQty} କ୍ୱିଣ୍ଟାଲ ${cropInfo.reg || cropInfo.en} ବିକ୍ରିରେ ମୋଟ ${total} ଟଙ୍କା ମିଳିବ।`
-    else if (regLang === 'as') regText = `${calcQty} কুইণ্টল ${cropInfo.reg || cropInfo.en} বিক্ৰীত মুঠ ${total} টকা লাভ কৰিব।`
-    else if (regLang === 'ur') regText = `${calcQty} کوئنٹل ${cropInfo.reg || cropInfo.en} فروخت پر کل ${total} روپے ملیں گے۔`
-    else if (regLang === 'hi') regText = `${calcQty} क्विंटल ${cropInfo.reg || cropInfo.en} बेचने पर आपको कुल ${total} रुपये मिलेंगे।`
+    if (regLang === 'te') regText = `${calcQty} క్వింటాళ్ల ${cropInfo.reg || cropInfo.en} మొత్తం విలువ ${total} రూపాయలు.`
+    else if (regLang === 'kn') regText = `${calcQty} ಕ್ವಿಂಟಾಲ್ ${cropInfo.reg || cropInfo.en} ಒಟ್ಟು ಮೌಲ್ಯ ${total} ರೂಪಾಯಿ.`
+    else if (regLang === 'ta') regText = `${calcQty} குவிண்டால் ${cropInfo.reg || cropInfo.en} மொத்த மதிப்பு ${total} ரூபாய்.`
+    else if (regLang === 'ml') regText = `${calcQty} ക്വിന്റൽ ${cropInfo.reg || cropInfo.en} ആകെ മൂല്യം ${total} രൂപ.`
+    else if (regLang === 'mr') regText = `${calcQty} क्विंटल ${cropInfo.reg || cropInfo.en} चे एकूण मूल्य ${total} रुपये.`
+    else if (regLang === 'hi') regText = `${calcQty} क्विंटल ${cropInfo.reg || cropInfo.en} का कुल मूल्य ${total} रुपये है।`
 
     setSpeakingCrop('calc')
     playDualVoice(enText, isNone ? '' : regText, regLang, () => setSpeakingCrop(null))
   }
 
-  // Filter rates by search and category (No locations)
+  // Filter rates by search, category, and saved status
   const displayedRates = rates.filter(r => {
-    // 1. Search Query Match
+    const cropId = r.symbol || r.crop
+    // 1. Saved filter
+    if (showOnlySaved && !savedCrops.includes(cropId)) {
+      return false
+    }
+
+    // 2. Search Query Match
     if (search.trim()) {
       const s = search.toLowerCase().trim()
       const cropInfo = getDualCropName(r.symbol || r.crop, regLang)
@@ -1385,7 +1429,7 @@ export default function MarketPrices({ onBack }) {
       if (!matchesSearch) return false
     }
 
-    // 2. Category Match
+    // 3. Category Match
     if (selectedCategory !== 'All') {
       const cat = (r.category || '').toLowerCase()
       const targetCat = selectedCategory.toLowerCase()
@@ -1413,91 +1457,127 @@ export default function MarketPrices({ onBack }) {
     return true
   })
 
-  return (
-    <div style={{ minHeight: '100vh', padding: '16px 12px 60px', backgroundColor: 'var(--bg-page)', color: 'var(--text-main)' }}>
-      <div className="container">
-        
-        {/* Global Standard Navigation Bar */}
-        <Navbar 
-          title={`🌾 ${DUAL_DICTIONARY.mandiRatesTitle.en} ${isNone ? '' : `/ ${DUAL_DICTIONARY.mandiRatesTitle[regLang]}`}`}
-          showBack={true}
-          onBack={onBack}
-        />
+  // Selected crop agronomic knowledge for the "More" tab
+  const selectedAgronomy = selectedCrop ? getCropAgronomyDetails(selectedCrop.crop || selectedCrop.symbol, selectedCrop.category, regLang) : null
 
-        {/* Hero Card with Live Market Rate Controls */}
-        <div className="card" style={{ padding: '24px 22px', marginBottom: 24, borderRadius: '0px', border: '1px solid #e2ece0', background: '#ffffff' }}>
+  // Clean title without duplicate English repetitions
+  const rawRegTitle = !isNone && DUAL_DICTIONARY.mandiRatesTitle[regLang] ? DUAL_DICTIONARY.mandiRatesTitle[regLang] : ''
+  const displayTitle = rawRegTitle && rawRegTitle !== DUAL_DICTIONARY.mandiRatesTitle.en 
+    ? `${DUAL_DICTIONARY.mandiRatesTitle.en} / ${rawRegTitle}`
+    : DUAL_DICTIONARY.mandiRatesTitle.en
+
+  const rawRegSub = !isNone && DUAL_DICTIONARY.mandiRatesSubtitle[regLang] ? DUAL_DICTIONARY.mandiRatesSubtitle[regLang] : ''
+  const displaySubtitle = rawRegSub && rawRegSub !== DUAL_DICTIONARY.mandiRatesSubtitle.en
+    ? `${DUAL_DICTIONARY.mandiRatesSubtitle.en} • ${rawRegSub}`
+    : DUAL_DICTIONARY.mandiRatesSubtitle.en
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#111827' }}>
+      {/* Global Standard Navigation Bar with farmer disclaimer in light font */}
+      <Navbar 
+        title="These prices are approxmate prices taken from various portals to help farmers to check day to day price changes but not for customers to check prices, verify the price when you sell . If you found any large difference in cost please intimate us"
+        isLightTitle={true}
+        showBack={true}
+        onBack={onBack}
+      />
+
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-5">
+        
+        {/* Modern Hero Card with Controls */}
+        <div className="bg-white rounded-2xl shadow-xs border border-gray-100 p-5 sm:p-6 mb-6">
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 style={{ margin: 0, fontSize: 'clamp(20px, 3.2vw, 26px)', fontWeight: 900, color: '#182c1d', display: 'flex', alignItems: 'center', gap: 10 }}>
-                🌾 {DUAL_DICTIONARY.mandiRatesTitle.en} {isNone ? '' : `/ ${DUAL_DICTIONARY.mandiRatesTitle[regLang]}`}
-              </h2>
-              <p style={{ margin: '6px 0 0 0', color: '#496150', fontSize: 14, fontWeight: 600 }}>
-                {DUAL_DICTIONARY.mandiRatesSubtitle.en} {isNone ? '' : `• ${DUAL_DICTIONARY.mandiRatesSubtitle[regLang]}`}
-              </p>
+              <div className="flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 text-lg shadow-xs">
+                  🌾
+                </span>
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                    {displayTitle}
+                  </h1>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-500 mt-0.5">
+                    {displaySubtitle}
+                  </p>
+                </div>
+              </div>
             </div>
             
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Top Action Buttons */}
+            <div className="flex items-center gap-2.5 flex-wrap">
               <button 
                 onClick={() => {
                   const en = "Welcome to Krishi-Net live market price board. All benchmark commodity prices are updated with voice announcements."
-                  const reg = currentStr.greeting || "తాజా మార్కెట్ ధరలు లోడ్ అయ్యాయి."
+                  const reg = currentStr.greeting || (regLang === 'hi' ? "ताज़ा मंडी भाव लोड हो चुके हैं।" : regLang === 'te' ? "తాజా మార్కెట్ ధరలు లోడ్ అయ్యాయి." : "")
                   playDualVoice(en, isNone ? '' : reg, regLang)
                 }}
-                className="btn btn-dark"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', fontSize: 13, borderRadius: '0px' }}
+                className="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-xs transition"
               >
-                🔊 Listen Prices
+                🔊 <span>Listen Prices</span>
               </button>
 
               {/* View Mode Switcher */}
-              <div style={{ display: 'flex', background: '#f0f7ee', padding: 3, border: '1.5px solid #5ca346' }}>
+              <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200/80">
                 <button
-                  onClick={() => setViewMode('kisan')}
-                  style={{
-                    padding: '6px 14px',
-                    border: 'none',
-                    fontSize: 13,
-                    fontWeight: 900,
-                    background: viewMode === 'kisan' ? '#5ca346' : 'transparent',
-                    color: viewMode === 'kisan' ? '#ffffff' : '#182c1d',
-                    cursor: 'pointer'
-                  }}
+                  onClick={() => { setViewMode('kisan'); setShowOnlySaved(false); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'kisan' && !showOnlySaved
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
                   🌾 Easy Cards
                 </button>
                 <button
-                  onClick={() => setViewMode('table')}
-                  style={{
-                    padding: '6px 14px',
-                    border: 'none',
-                    fontSize: 13,
-                    fontWeight: 900,
-                    background: viewMode === 'table' ? '#5ca346' : 'transparent',
-                    color: viewMode === 'table' ? '#ffffff' : '#182c1d',
-                    cursor: 'pointer'
-                  }}
+                  onClick={() => { setViewMode('table'); setShowOnlySaved(false); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'table' && !showOnlySaved
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
                   📊 Table View
                 </button>
               </div>
+
+              {/* Saved List Filter Button */}
+              <button
+                type="button"
+                onClick={() => setShowOnlySaved(prev => !prev)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition border ${
+                  showOnlySaved
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                    : 'bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <span>{showOnlySaved ? '★' : '🔖'}</span>
+                <span>Saved List</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                  showOnlySaved ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900'
+                }`}>
+                  {savedCrops.length}
+                </span>
+              </button>
             </div>
           </div>
 
-          {/* Search & Voice Search Bar (No Locations) */}
-          <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 240, position: 'relative', display: 'flex', alignItems: 'center' }}>
+          {/* Search & Voice Search Bar */}
+          <div className="mt-5 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+            <div className="relative flex-1">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                🔍
+              </span>
               <input 
                 type="text" 
-                placeholder="Search by crop name or variety (e.g. Wheat, Basmati, Corn, Soybean, Chilli)..."
+                placeholder="Search by crop name or variety (e.g. Wheat, Basmati, Corn, Soybean, Chilli, Tobacco)..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ width: '100%', padding: '12px 46px 12px 14px', background: '#ffffff', border: '1.5px solid #d1d5db', color: '#182c1d', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontWeight: 700, borderRadius: '0px' }}
+                className="w-full pl-10 pr-10 py-2.5 bg-gray-50/80 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition"
               />
               {search && (
                 <button 
                   onClick={() => setSearch('')}
-                  style={{ position: 'absolute', right: 12, background: 'transparent', border: 'none', color: '#182c1d', fontSize: 16, cursor: 'pointer', fontWeight: 900 }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm font-bold"
                 >
                   ✕
                 </button>
@@ -1508,24 +1588,18 @@ export default function MarketPrices({ onBack }) {
             <button 
               type="button" 
               onClick={startVoiceSearch}
-              className="btn btn-primary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '12px 20px',
-                fontSize: 14,
-                borderRadius: '0px',
-                background: '#5ca346',
-                borderColor: '#5ca346'
-              }}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition ${
+                isListening
+                  ? 'bg-rose-600 text-white animate-pulse'
+                  : 'bg-[#2E7D32] hover:bg-[#1b5e20] text-white'
+              }`}
             >
-              {isListening ? '🎙️ Listening...' : '🎙️ Voice Search'}
+              <span>{isListening ? '🎙️ Listening...' : '🎙️ Voice Search'}</span>
             </button>
           </div>
 
-          {/* Category Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+          {/* Category Filter Pills */}
+          <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-none">
             {[
               { id: 'All', en: 'All 120+ Crops', icon: '🌾' },
               { id: 'Cereals', en: 'Grains & Cereals', icon: '🌾' },
@@ -1537,160 +1611,203 @@ export default function MarketPrices({ onBack }) {
               { id: 'Fibres', en: 'Cotton & Fibres', icon: '🧵' },
               { id: 'Commercial', en: 'Commercial Crops', icon: '🎋' }
             ].map(cat => {
-              const isSelected = selectedCategory === cat.id
+              const isSelected = selectedCategory === cat.id && !showOnlySaved
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  style={{
-                    whiteSpace: 'nowrap',
-                    padding: '8px 14px',
-                    fontSize: 12,
-                    fontWeight: 900,
-                    background: isSelected ? '#5ca346' : '#ffffff',
-                    color: isSelected ? '#ffffff' : '#182c1d',
-                    border: isSelected ? '1.5px solid #5ca346' : '1px solid #d1d5db',
-                    borderRadius: '0px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
+                  onClick={() => { setSelectedCategory(cat.id); setShowOnlySaved(false); }}
+                  className={`whitespace-nowrap px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                    isSelected
+                      ? 'bg-[#2E7D32] text-white border-[#2E7D32] shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
                 >
-                  <span>{cat.icon} {cat.en}</span>
+                  <span>{cat.icon}</span>
+                  <span>{cat.en}</span>
                 </button>
               )
             })}
           </div>
+
+          {/* Active Saved Filter Notice Banner */}
+          {showOnlySaved && (
+            <div className="mt-3 px-3.5 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs font-bold text-amber-900">
+              <div className="flex items-center gap-2">
+                <span>🔖</span>
+                <span>Showing your Saved Watchlist ({displayedRates.length} crops bookmarked)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOnlySaved(false)}
+                className="text-amber-800 underline hover:text-amber-950 font-black cursor-pointer"
+              >
+                Show All Crops
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Loading State */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div className="spinner" style={{ width: 48, height: 48, margin: '0 auto 16px auto', borderColor: '#00eb78', borderTopColor: 'transparent', borderWidth: 4 }}></div>
-            <h3 style={{ color: '#ffffff', fontSize: 18, fontWeight: 800 }}>Loading Live Market Rates...</h3>
+          <div className="text-center py-16">
+            <div className="w-10 h-10 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-sm font-bold text-gray-600">Loading Live Mandi Benchmark Rates...</p>
           </div>
         ) : displayedRates.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🔍</div>
-            <p style={{ fontSize: 16, color: '#000000', fontWeight: 800 }}>No crops found matching "{search}"</p>
-            <button onClick={() => { setSearch(''); setSelectedCategory('All'); }} className="btn btn-dark" style={{ marginTop: 10, padding: '8px 20px' }}>
-              🌾 Show All Crops
+          <div className="bg-white rounded-2xl p-10 text-center border border-gray-100 shadow-xs">
+            <div className="text-4xl mb-2">{showOnlySaved ? '🔖' : '🔍'}</div>
+            <h3 className="text-base font-bold text-gray-900">
+              {showOnlySaved ? 'Your Saved List is empty' : `No crops found matching "${search}"`}
+            </h3>
+            <p className="text-xs text-gray-500 max-w-md mx-auto mt-1 mb-4">
+              {showOnlySaved 
+                ? 'Tap the Bookmark / Save icon on any crop card to build your personalized daily watchlist.' 
+                : 'Try adjusting your search query or pick a different crop category above.'}
+            </p>
+            <button 
+              onClick={() => { setSearch(''); setSelectedCategory('All'); setShowOnlySaved(false); }} 
+              className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold"
+            >
+              🌾 Browse All 120+ Crops
             </button>
           </div>
         ) : viewMode === 'kisan' ? (
-          /* Kisan Cards Grid */
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          /* Simplified Modern Kisan Cards Grid */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {displayedRates.map(item => {
-              const cropInfo = getDualCropName(item.symbol || item.crop, regLang)
+              const cropId = item.symbol || item.crop
+              const isSaved = savedCrops.includes(cropId)
+              const cropInfo = getDualCropName(cropId, regLang)
               const isRateUp = item.change24h >= 0
               const isSpeakingThis = speakingCrop === item.symbol
               const unitEn = item.unit === 'litre' ? 'per Litre' : item.unit === 'kg' ? 'per kg' : 'per Quintal (100 kg)'
 
               return (
                 <div
-                  key={item.symbol}
-                  onClick={() => openCropGraphModal(item)}
-                  className="card"
-                  style={{
-                    margin: 0,
-                    padding: 16,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    border: isRateUp ? '2px solid #16a34a' : '2px solid #dc2626',
-                    background: '#ffffff'
-                  }}
+                  key={cropId}
+                  className={`bg-white rounded-2xl p-4.5 flex flex-col justify-between border transition-all duration-200 hover:shadow-md ${
+                    isSaved 
+                      ? 'border-amber-300 shadow-amber-50/50' 
+                      : isRateUp 
+                        ? 'border-emerald-100/90 hover:border-emerald-300 shadow-xs' 
+                        : 'border-rose-100/90 hover:border-rose-300 shadow-xs'
+                  }`}
                 >
                   <div>
-                    {/* Card Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 44, height: 44, background: '#eaf7e6', border: '1px solid #86efac', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+                    {/* Card Header: Crop Icon + Name + 24h Trend + Save/Bookmark button */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 flex items-center justify-center text-2xl shrink-0 shadow-2xs">
                           {cropInfo.icon}
                         </div>
-                        <div>
-                          <div style={{ fontSize: 16, fontWeight: 900, color: '#000000', lineHeight: 1.2 }}>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-black text-gray-900 truncate leading-tight">
                             {cropInfo.en}
-                          </div>
+                          </h3>
                           {!isNone && cropInfo.reg && (
-                            <div style={{ fontSize: 12, fontWeight: 800, color: '#15803d', marginTop: 2 }}>
+                            <p className="text-xs font-bold text-emerald-700 truncate mt-0.5">
                               {cropInfo.reg}
-                            </div>
+                            </p>
                           )}
                         </div>
                       </div>
 
-                      <span style={{
-                        fontSize: 11,
-                        fontWeight: 900,
-                        padding: '2px 8px',
-                        background: isRateUp ? '#dcfce7' : '#fee2e2',
-                        color: isRateUp ? '#15803d' : '#b91c1c',
-                        border: `1px solid ${isRateUp ? '#86efac' : '#fca5a5'}`
-                      }}>
-                        {isRateUp ? `▲ +${item.change24h || 0}%` : `▼ ${item.change24h || 0}%`}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-black border ${
+                          isRateUp 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {isRateUp ? `▲ +${item.change24h || 0}%` : `▼ ${item.change24h || 0}%`}
+                        </span>
+
+                        {/* Save / Bookmark Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => toggleSaveCrop(item, e)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs transition ${
+                            isSaved 
+                              ? 'bg-amber-100 text-amber-700 font-black' 
+                              : 'bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-700'
+                          }`}
+                          title={isSaved ? "Saved in your list" : "Save to your list"}
+                        >
+                          {isSaved ? '★' : '☆'}
+                        </button>
+                      </div>
                     </div>
 
                     {/* Price Details Box */}
-                    <div style={{ background: '#f9fcf8', padding: '12px 14px', border: '1px solid #e2ece0', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <div style={{ fontSize: 11, color: '#475569', fontWeight: 800, textTransform: 'uppercase' }}>Benchmark Price:</div>
+                    <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 mb-3.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                          Benchmark Price:
+                        </span>
                         {item.mspInr && (
-                          <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', fontWeight: 800, padding: '1px 5px', borderRadius: '0px' }}>
+                          <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md">
                             MSP: ₹{item.mspInr}
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: '#065f46', marginTop: 2 }}>
-                        ₹{(item.modalPrice || item.priceInr).toLocaleString('en-US')}
+                      
+                      <div className="text-2xl font-black text-emerald-900 mt-1 tracking-tight">
+                        ₹{(item.modalPrice || item.priceInr || 0).toLocaleString('en-US')}
                       </div>
-                      <div style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>
+                      <p className="text-[11px] font-bold text-emerald-700">
                         {unitEn}
-                      </div>
+                      </p>
 
                       {item.minPrice && item.maxPrice && (
-                        <div style={{ fontSize: 11, color: '#334155', fontWeight: 700, marginTop: 4, paddingTop: 4, borderTop: '1px dashed #e2e8f0' }}>
-                          Price Range: <span style={{ color: '#047857' }}>₹{item.minPrice}</span> - <span style={{ color: '#b91c1c' }}>₹{item.maxPrice}</span>
+                        <div className="text-[11px] font-bold text-gray-600 mt-2 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                          <span className="text-gray-400 font-semibold">Price Range:</span>
+                          <span>
+                            <strong className="text-emerald-700">₹{item.minPrice}</strong> - <strong className="text-rose-700">₹{item.maxPrice}</strong>
+                          </span>
                         </div>
                       )}
 
                       {item.variety && (
-                        <div style={{ fontSize: 11, color: '#475569', fontWeight: 700, marginTop: 4 }}>
-                          Variety: <span style={{ color: '#0f172a' }}>{item.variety}</span>
+                        <div className="text-[11px] font-bold text-gray-600 mt-1 flex items-center justify-between">
+                          <span className="text-gray-400 font-semibold">Variety:</span>
+                          <span className="text-gray-900 truncate max-w-[130px]">{item.variety}</span>
                         </div>
                       )}
-
-                      {/* Mini Price Sparkline Graph for Every Crop */}
-                      <MiniPriceSparkline crop={item} />
                     </div>
                   </div>
 
-                  {/* Card Action Buttons */}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                  {/* 4 Card Action Buttons */}
+                  <div className="grid grid-cols-4 gap-1.5">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); openCropGraphModal(item); }}
-                      className="btn btn-primary"
-                      style={{ flex: 1.2, padding: '8px 10px', fontSize: 12, borderRadius: '0px', background: '#5ca346', borderColor: '#5ca346', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                      onClick={() => openCropGraphModal(item)}
+                      className="col-span-1 py-2 px-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-2xs"
+                      title="View Price Change Graph"
                     >
-                      📈 Price Graph
+                      📈 Graph
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); openCropCalcModal(item); }}
-                      className="btn btn-dark"
-                      style={{ flex: 1, padding: '8px 8px', fontSize: 12, borderRadius: '0px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                      onClick={() => openCropCalcModal(item)}
+                      className="col-span-1 py-2 px-1 rounded-xl bg-gray-900 hover:bg-black text-white text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-2xs"
+                      title="Cash Payout Calculator"
                     >
-                      🧮 Calculator
+                      🧮 Calc
                     </button>
                     <button
                       type="button"
                       onClick={(e) => handleSpeakCropDual(item, e)}
-                      style={{ padding: '8px 10px', fontSize: 13, borderRadius: '0px', background: '#ffffff', border: '1.5px solid #d1d5db', cursor: 'pointer' }}
+                      className="col-span-1 py-2 px-1 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs transition flex items-center justify-center"
                       title="Listen Rate"
                     >
                       {isSpeakingThis ? '🔊' : '🔈'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openCropMoreModal(item)}
+                      className="col-span-1 py-2 px-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition flex items-center justify-center gap-1"
+                      title="Agronomy Tips, Do's & Don'ts, Quality Grading"
+                    >
+                      ℹ️ More
                     </button>
                   </div>
                 </div>
@@ -1698,177 +1815,363 @@ export default function MarketPrices({ onBack }) {
             })}
           </div>
         ) : (
-          /* Table View with Mini Sparkline Graph */
-          <div className="card" style={{ padding: 18, overflowX: 'auto', borderRadius: '0px', border: '1px solid #e2ece0', background: '#ffffff' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: '#182c1d', color: '#ffffff' }}>
-                  <th style={{ padding: '12px 14px', fontWeight: 900 }}>Crop</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900 }}>Category</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900 }}>Live Benchmark Price</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900 }}>Price Range</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900 }}>24h Trend</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900, minWidth: 160 }}>7-Day Price Graph</th>
-                  <th style={{ padding: '12px 14px', fontWeight: 900, textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRates.map((item, idx) => {
-                  const cropInfo = getDualCropName(item.symbol || item.crop, regLang)
-                  const isRateUp = item.change24h >= 0
-                  return (
-                    <tr key={item.symbol || idx} style={{ borderBottom: '1px solid #e2ece0', background: idx % 2 === 0 ? '#ffffff' : '#f9fcf8' }}>
-                      <td style={{ padding: '12px 14px', fontWeight: 900, color: '#182c1d' }}>
-                        {cropInfo.icon} {cropInfo.en} {!isNone && cropInfo.reg ? `(${cropInfo.reg})` : ''}
-                        {item.variety && <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{item.variety}</div>}
-                      </td>
-                      <td style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>{item.category}</td>
-                      <td style={{ padding: '12px 14px', fontWeight: 900, color: '#2e7d32', fontSize: 16 }}>
-                        ₹{(item.modalPrice || item.priceInr || 0).toLocaleString('en-US')}
-                        <div style={{ fontSize: 10, color: '#64748b' }}>per {item.unit === 'kg' ? 'kg' : item.unit === 'litre' ? 'litre' : 'quintal'}</div>
-                      </td>
-                      <td style={{ padding: '12px 14px', color: '#334155', fontWeight: 700, fontSize: 13 }}>
-                        {item.minPrice && item.maxPrice ? `₹${item.minPrice} - ₹${item.maxPrice}` : '—'}
-                      </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 800, color: isRateUp ? '#166534' : '#dc2626' }}>
-                        {isRateUp ? `▲ +${item.change24h || 0}%` : `▼ ${item.change24h || 0}%`}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ width: 140 }}>
-                          <MiniPriceSparkline crop={item} />
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                          <button onClick={() => openCropGraphModal(item)} className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12, borderRadius: '0px', background: '#5ca346', borderColor: '#5ca346' }}>
-                            📈 Graph
-                          </button>
-                          <button onClick={() => openCropCalcModal(item)} className="btn btn-dark" style={{ padding: '6px 10px', fontSize: 12, borderRadius: '0px' }}>
-                            🧮 Calc
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          /* Table View */
+          <div className="bg-white rounded-2xl shadow-xs border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-gray-900 text-white font-bold">
+                    <th className="px-4 py-3">Crop</th>
+                    <th className="px-4 py-3">Category</th>
+                    <th className="px-4 py-3">Live Benchmark Price</th>
+                    <th className="px-4 py-3">Price Range</th>
+                    <th className="px-4 py-3">24h Trend</th>
+                    <th className="px-4 py-3 min-w-[130px]">7-Day Trend</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {displayedRates.map((item, idx) => {
+                    const cropId = item.symbol || item.crop
+                    const isSaved = savedCrops.includes(cropId)
+                    const cropInfo = getDualCropName(cropId, regLang)
+                    const isRateUp = item.change24h >= 0
+                    return (
+                      <tr key={cropId || idx} className="hover:bg-emerald-50/30 transition">
+                        <td className="px-4 py-3 font-bold text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleSaveCrop(item, e)}
+                              className={`text-xs px-1.5 py-0.5 rounded ${isSaved ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                              {isSaved ? '★' : '☆'}
+                            </button>
+                            <div>
+                              <span>{cropInfo.icon} {cropInfo.en}</span>
+                              {!isNone && cropInfo.reg && <span className="text-emerald-700 ml-1">({cropInfo.reg})</span>}
+                              {item.variety && <div className="text-[10px] text-gray-400 font-normal">{item.variety}</div>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 font-semibold">{item.category}</td>
+                        <td className="px-4 py-3 font-black text-emerald-700 text-sm">
+                          ₹{(item.modalPrice || item.priceInr || 0).toLocaleString('en-US')}
+                          <span className="text-[10px] text-gray-400 font-normal ml-1">/ {item.unit || 'qtl'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 font-semibold">
+                          {item.minPrice && item.maxPrice ? `₹${item.minPrice} - ₹${item.maxPrice}` : '—'}
+                        </td>
+                        <td className="px-4 py-3 font-black">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${isRateUp ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {isRateUp ? `▲ +${item.change24h || 0}%` : `▼ ${item.change24h || 0}%`}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="w-28">
+                            <MiniPriceSparkline crop={item} />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => openCropGraphModal(item)} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold">
+                              📈 Graph
+                            </button>
+                            <button onClick={() => openCropCalcModal(item)} className="px-2 py-1 bg-gray-900 hover:bg-black text-white rounded-lg text-[11px] font-bold">
+                              🧮 Calc
+                            </button>
+                            <button onClick={() => openCropMoreModal(item)} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[11px] font-bold">
+                              ℹ️ More
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* Interactive Modal: Price Change Graph & Cash Calculator */}
+        {/* Interactive Comprehensive Modal (Rounded & Frosted) */}
         {selectedCrop && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-            <div className="card" style={{ maxWidth: 580, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24, margin: 0, background: '#ffffff', border: '2px solid #16a34a' }}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-gray-100">
               
               {/* Modal Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 52, height: 52, background: '#bbf7d0', border: '1px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30 }}>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-3xl shadow-xs shrink-0">
                     {getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).icon}
                   </div>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: '#000000' }}>
-                      {getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).en} {!isNone && getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).reg ? `/ ${getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).reg}` : ''}
-                    </h2>
-                    <div style={{ fontSize: 13, color: '#15803d', fontWeight: 800, marginTop: 2 }}>
-                      {selectedCrop.category} {selectedCrop.variety ? `• Variety: ${selectedCrop.variety}` : ''}
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg sm:text-xl font-black text-gray-900">
+                        {getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).en}
+                        {!isNone && getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).reg && (
+                          <span className="text-emerald-700 ml-1.5 font-bold">/ {getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).reg}</span>
+                        )}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleSaveCrop(selectedCrop, e)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition ${
+                          savedCrops.includes(selectedCrop.symbol || selectedCrop.crop)
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {savedCrops.includes(selectedCrop.symbol || selectedCrop.crop) ? '★ Saved' : '☆ Save'}
+                      </button>
                     </div>
+                    <p className="text-xs font-bold text-emerald-700 mt-0.5">
+                      {selectedCrop.category} {selectedCrop.variety ? `• Variety: ${selectedCrop.variety}` : ''}
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedCrop(null)} className="btn btn-ghost" style={{ width: 34, height: 34, padding: 0, color: '#000', borderColor: '#000' }}>✕</button>
+                <button 
+                  onClick={() => setSelectedCrop(null)} 
+                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-sm font-bold transition"
+                >
+                  ✕
+                </button>
               </div>
 
-              {/* Tab Switcher: [📈 Price Change Graph] | [🧮 Cash Calculator] */}
-              <div style={{ display: 'flex', borderBottom: '2px solid #e2ece0', marginBottom: 16 }}>
+              {/* 3 Tab Switchers */}
+              <div className="flex bg-gray-100/80 p-1 rounded-xl mb-4 gap-1">
                 <button
                   onClick={() => setModalTab('graph')}
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    fontSize: 14,
-                    fontWeight: 900,
-                    border: 'none',
-                    borderBottom: modalTab === 'graph' ? '3px solid #5ca346' : '3px solid transparent',
-                    background: modalTab === 'graph' ? '#f0f7ee' : 'transparent',
-                    color: modalTab === 'graph' ? '#182c1d' : '#64748b',
-                    cursor: 'pointer'
-                  }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                    modalTab === 'graph' ? 'bg-white text-emerald-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
                   📈 Price Change Graph
                 </button>
                 <button
                   onClick={() => setModalTab('calc')}
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    fontSize: 14,
-                    fontWeight: 900,
-                    border: 'none',
-                    borderBottom: modalTab === 'calc' ? '3px solid #5ca346' : '3px solid transparent',
-                    background: modalTab === 'calc' ? '#f0f7ee' : 'transparent',
-                    color: modalTab === 'calc' ? '#182c1d' : '#64748b',
-                    cursor: 'pointer'
-                  }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                    modalTab === 'calc' ? 'bg-white text-emerald-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  🧮 Cash Payout Calculator
+                  🧮 Cash Calculator
+                </button>
+                <button
+                  onClick={() => setModalTab('more')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                    modalTab === 'more' ? 'bg-white text-emerald-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ℹ️ Agronomy Guide
                 </button>
               </div>
 
-              {/* Price Banner */}
-              <div style={{ background: '#f9fcf8', border: '1.5px solid #86efac', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              {/* TAB 1: Price Change Graph */}
+              {modalTab === 'graph' && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#475569', fontWeight: 800, textTransform: 'uppercase' }}>Live Benchmark Price:</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: '#065f46' }}>
-                    ₹{selectedCrop.priceInr.toLocaleString('en-US')}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#15803d', fontWeight: 800 }}>
-                    per Quintal (100 kg) {selectedCrop.mspInr ? `• MSP: ₹${selectedCrop.mspInr}` : ''}
-                  </div>
+                  <FullPriceGraph crop={selectedCrop} timeframe={graphTimeframe} setTimeframe={setGraphTimeframe} />
                 </div>
-                <button type="button" onClick={() => handleSpeakCropDual(selectedCrop)} className="btn btn-dark" style={{ padding: '8px 14px', fontSize: 13, borderRadius: '0px' }}>
-                  🔊 Listen Rate
-                </button>
-              </div>
+              )}
 
-              {modalTab === 'graph' ? (
-                /* Full Interactive Price Change Graph */
-                <FullPriceGraph crop={selectedCrop} timeframe={graphTimeframe} setTimeframe={setGraphTimeframe} />
-              ) : (
-                /* Cash Payout Calculator */
-                <div style={{ background: '#ffffff', border: '1.5px solid #000000', padding: 18, marginBottom: 18 }}>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: '#000000', marginBottom: 6 }}>
-                    🧮 Instant Cash Payout Calculator
-                  </div>
-                  <div style={{ fontSize: 12, color: '#334155', fontWeight: 700, marginBottom: 10 }}>
-                    Quantity in Quintals (100 kg):
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <button onClick={() => setCalcQty(prev => Math.max(1, prev - 5))} className="btn btn-ghost" style={{ padding: '8px 12px', color: '#000', borderColor: '#000' }}>-5</button>
-                    <button onClick={() => setCalcQty(prev => Math.max(1, prev - 1))} className="btn btn-ghost" style={{ padding: '8px 12px', color: '#000', borderColor: '#000' }}>-1</button>
-                    <input type="number" value={calcQty} onChange={e => setCalcQty(Math.max(1, parseInt(e.target.value) || 1))} style={{ flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 900, padding: 8, border: '2px solid #000', color: '#000' }} />
-                    <button onClick={() => setCalcQty(prev => prev + 1)} className="btn btn-ghost" style={{ padding: '8px 12px', color: '#000', borderColor: '#000' }}>+1</button>
-                    <button onClick={() => setCalcQty(prev => prev + 5)} className="btn btn-ghost" style={{ padding: '8px 12px', color: '#000', borderColor: '#000' }}>+5</button>
-                  </div>
-
-                  <div style={{ background: '#e8f9ee', padding: '12px 14px', border: '2px solid #16a34a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* TAB 2: Cash Payout Calculator */}
+              {modalTab === 'calc' && (
+                <div>
+                  <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 flex items-center justify-between mb-4">
                     <div>
-                      <div style={{ fontSize: 11, color: '#166534', fontWeight: 800 }}>Total Payout:</div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: '#065f46', marginTop: 2 }}>
-                        ₹{Math.round(selectedCrop.priceInr * calcQty).toLocaleString('en-US')}
+                      <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">Benchmark Price:</span>
+                      <div className="text-2xl font-black text-emerald-950 mt-0.5">
+                        ₹{(selectedCrop.modalPrice || selectedCrop.priceInr || 0).toLocaleString('en-US')}
                       </div>
+                      <p className="text-xs font-bold text-emerald-700">
+                        per Quintal (100 kg) {selectedCrop.mspInr ? `• MSP: ₹${selectedCrop.mspInr}` : ''}
+                      </p>
                     </div>
-                    <button onClick={speakCalculatedTotalDual} className="btn btn-dark" style={{ padding: '8px 12px', fontSize: 12 }}>
-                      🔊 Listen Total
+                    <button type="button" onClick={() => handleSpeakCropDual(selectedCrop)} className="px-3.5 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow-xs">
+                      🔊 Listen Rate
                     </button>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider mb-1">
+                      🧮 Cash Payout Calculator
+                    </h4>
+                    <p className="text-xs font-semibold text-gray-500 mb-3">
+                      Enter harvest quantity in Quintals (100 kg):
+                    </p>
+
+                    {/* Quick Step Buttons */}
+                    <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                      <button onClick={() => setCalcQty(prev => Math.max(1, prev - 10))} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">-10</button>
+                      <button onClick={() => setCalcQty(prev => Math.max(1, prev - 5))} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">-5</button>
+                      <button onClick={() => setCalcQty(prev => Math.max(1, prev - 1))} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">-1</button>
+                      
+                      <input 
+                        type="number" 
+                        min="1"
+                        value={calcQty} 
+                        onChange={e => setCalcQty(Math.max(1, parseInt(e.target.value) || 1))} 
+                        className="flex-1 min-w-[90px] text-center text-xl font-black py-1.5 px-2 bg-emerald-50/50 border-2 border-emerald-500 rounded-xl text-emerald-950 focus:outline-none"
+                      />
+
+                      <button onClick={() => setCalcQty(prev => prev + 1)} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">+1</button>
+                      <button onClick={() => setCalcQty(prev => prev + 5)} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">+5</button>
+                      <button onClick={() => setCalcQty(prev => prev + 10)} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">+10</button>
+                      <button onClick={() => setCalcQty(prev => prev + 50)} className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold">+50</button>
+                    </div>
+
+                    {/* Total Estimated Payout Card */}
+                    <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-2xl p-4 text-white flex items-center justify-between shadow-xs">
+                      <div>
+                        <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">
+                          Total Value ({calcQty} Quintals):
+                        </span>
+                        <div className="text-2xl sm:text-3xl font-black mt-0.5">
+                          ₹{Math.round((selectedCrop.modalPrice || selectedCrop.priceInr || 0) * calcQty).toLocaleString('en-US')}
+                        </div>
+                        {selectedCrop.mspInr && (
+                          <p className="text-[11px] font-semibold text-emerald-100 mt-1">
+                            Govt MSP Valuation: ₹{Math.round(selectedCrop.mspInr * calcQty).toLocaleString('en-US')}
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={speakCalculatedTotalDual} className="px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-xs text-white rounded-xl text-xs font-bold transition">
+                        🔊 Listen
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
 
-              <button onClick={() => { setSelectedCrop(null); window.location.hash = '#/amazon-rates'; }} className="btn btn-primary btn-block" style={{ width: '100%', padding: '14px', fontSize: 15, marginTop: 14 }}>
-                🚜 Sell {getDualCropName(selectedCrop.symbol || selectedCrop.crop, regLang).en} →
-              </button>
+              {/* TAB 3: More / Comprehensive Crop Knowledge */}
+              {modalTab === 'more' && selectedAgronomy && (
+                <div className="space-y-3.5">
+                  
+                  {/* Overview & Mandi Insights */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                      📊 Mandi Market & Seasonal Dynamics
+                    </h4>
+                    <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                      {selectedAgronomy.priceTrendInsight}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                        <span className="font-semibold text-gray-500">Peak Selling Window: </span>
+                        <strong className="text-emerald-700 font-black">{selectedAgronomy.mandiSeason}</strong>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                        <span className="font-semibold text-gray-500">Sale Moisture Target: </span>
+                        <strong className="text-emerald-700 font-black">{selectedAgronomy.optimalMoistureForSale}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* High Yield & Quality Tips & Tricks */}
+                  <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4">
+                    <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                      💡 Cultivation & High-Yield Tips & Tricks
+                    </h4>
+                    <div className="space-y-1.5">
+                      {selectedAgronomy.tipsAndTricks.map((tip, idx) => (
+                        <div key={idx} className="text-xs text-emerald-950 leading-relaxed flex items-start gap-2">
+                          <span className="text-emerald-600 font-black">•</span>
+                          <span>{tip}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Do's & Don'ts Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Mandi Do's */}
+                    <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3.5">
+                      <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        ✅ Mandi Selling Do's
+                      </h4>
+                      <div className="space-y-1.5">
+                        {selectedAgronomy.dos.map((d, i) => (
+                          <div key={i} className="text-[11.5px] text-emerald-950 leading-relaxed">
+                            {d}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mandi Don'ts */}
+                    <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-3.5">
+                      <h4 className="text-xs font-black text-rose-900 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        ❌ Mandi Selling Don'ts
+                      </h4>
+                      <div className="space-y-1.5">
+                        {selectedAgronomy.donts.map((d, i) => (
+                          <div key={i} className="text-[11.5px] text-rose-950 leading-relaxed">
+                            {d}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quality Grading Standards */}
+                  {selectedAgronomy.gradingStandards && (
+                    <div className="bg-purple-50/60 border border-purple-200 rounded-2xl p-3.5">
+                      <h4 className="text-xs font-black text-purple-900 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        🏛️ APMC & Govt Quality Grading Standards
+                      </h4>
+                      <div className="space-y-1 text-xs">
+                        {selectedAgronomy.gradingStandards.gradeA && (
+                          <div className="text-purple-950">
+                            <strong>Grade-A Premium:</strong> {selectedAgronomy.gradingStandards.gradeA}
+                          </div>
+                        )}
+                        {selectedAgronomy.gradingStandards.gradeB && (
+                          <div className="text-purple-950">
+                            <strong>Grade-B Standard:</strong> {selectedAgronomy.gradingStandards.gradeB}
+                          </div>
+                        )}
+                        {selectedAgronomy.gradingStandards.rejectionThreshold && (
+                          <div className="text-rose-900 font-semibold mt-1">
+                            <strong>Rejection / Penalty:</strong> {selectedAgronomy.gradingStandards.rejectionThreshold}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Listen Advisory Button */}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const en = `Agronomy advisory for ${selectedCrop.crop || selectedCrop.symbol}. ${selectedAgronomy.priceTrendInsight}. Tip: ${selectedAgronomy.tipsAndTricks[0]}`
+                        let reg = ''
+                        if (regLang === 'te') reg = `పంట సలహాలు: ${selectedAgronomy.tipsAndTricks[0]}`
+                        else if (regLang === 'hi') reg = `फसल सलाह: ${selectedAgronomy.tipsAndTricks[0]}`
+                        else if (regLang === 'ta') reg = `பயிர் ஆலோசனை: ${selectedAgronomy.tipsAndTricks[0]}`
+                        else if (regLang === 'kn') reg = `ಬೆಳೆ ಸಲಹೆ: ${selectedAgronomy.tipsAndTricks[0]}`
+                        else if (regLang === 'mr') reg = `पीक सल्ला: ${selectedAgronomy.tipsAndTricks[0]}`
+                        playDualVoice(en, isNone ? '' : reg, regLang)
+                      }}
+                      className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition"
+                    >
+                      🔊 Listen Crop Advisory
+                    </button>
+                  </div>
+
+                </div>
+              )}
+
+              {/* Close Button Footer */}
+              <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCrop(null)}
+                  className="px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Close
+                </button>
+              </div>
+
             </div>
           </div>
         )}
