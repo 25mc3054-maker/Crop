@@ -1,0 +1,23 @@
+# Robots.txt for Krishi-Net Agricultural Intelligence Platform
+User-agent: *
+Allow: /
+Allow: /#/
+Allow: /#/market-prices
+Allow: /#/schemes
+Allow: /#/soil-analyser
+Allow: /#/weather
+Allow: /#/crop-planner
+Allow: /#/pest-disease
+Allow: /#/finance
+Allow: /#/tutorials
+Allow: /#/community-news
+Allow: /#/login
+Allow: /#/register
+
+# Disallow sensitive internal endpoints
+Disallow: /api/
+Disallow: /settings
+Disallow: /auth/
+
+# Sitemap location
+Sitemap: https://krishi-net.org/sitemap.xml

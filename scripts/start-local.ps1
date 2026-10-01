@@ -1,6 +1,6 @@
 param()
 
-$root = "C:\Users\Sai Badrishwar S S\INVENTRA"
+$root = (Resolve-Path "$PSScriptRoot\..").Path
 
 # Kill any existing node processes
 Try {

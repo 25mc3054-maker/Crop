@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from './config';
 import { CACHE_KEYS, readLiveCache, writeLiveCache } from './livePreload';
+import Navbar from './components/Navbar';
 
 export default function Notifications({ onBack }) {
   const cachedSchemes = readLiveCache(CACHE_KEYS.schemes, 30 * 60 * 1000);
@@ -74,36 +75,38 @@ export default function Notifications({ onBack }) {
   };
 
   return (
-    <div className="container">
-      <button onClick={onBack} style={{ marginBottom: '1rem', padding: '10px 16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#f8fafc', cursor: 'pointer' }}>&larr; Back to Dashboard</button>
-      <h1>Government Schemes for Farmers</h1>
-      <p style={{ color: '#cbd5e1', marginBottom: '14px' }}>Official schemes with direct apply/check links.</p>
-      {detectedState && <p style={{ color: '#10b981', marginBottom: '14px' }}>Detected State: {detectedState}</p>}
-      {lastUpdated && <p style={{ color: '#94a3b8', marginBottom: '14px', fontSize: '13px' }}>Live updates every 2 minutes • Last updated: {lastUpdated}</p>}
+    <div className="container" style={{ padding: '24px 16px', minHeight: '100vh', backgroundColor: 'var(--bg-dark)' }}>
+      <Navbar title="🏛️ Government Schemes & Subsidies" showBack={true} onBack={onBack} />
 
-      {loading ? <p>Loading schemes...</p> : error ? <div className="card" style={{ borderLeft: '4px solid #ef4444' }}>{error}</div> : schemes.length === 0 ? <p>No schemes found.</p> : (
+      <div style={{ marginBottom: '20px' }}>
+        <p style={{ color: '#a7f3d0' }}>Official subsidies, financial grants, and direct verification portals.</p>
+        {detectedState && <div style={{ display: 'inline-block', background: '#00eb78', color: '#000000', padding: '4px 10px', fontSize: 12, fontWeight: 900, marginTop: 8 }}>📍 Detected State: {detectedState}</div>}
+      </div>
+
+      {loading ? (
+        <div className="card" style={{ textAlign: 'center', padding: '36px' }}>
+          <div className="spinner" style={{ borderColor: '#16a34a', borderTopColor: 'transparent' }}></div>
+          <p style={{ color: '#000000', fontWeight: 800 }}>Fetching government scheme directories...</p>
+        </div>
+      ) : error ? (
+        <div className="card" style={{ background: '#fee2e2', border: '2px solid #ef4444', color: '#991b1b' }}>{error}</div>
+      ) : schemes.length === 0 ? (
+        <div className="card">No schemes found.</div>
+      ) : (
         schemes.map((scheme) => (
-          <div key={scheme.id} className="card" style={{ borderLeft: '4px solid #10b981' }}>
-            <h3 style={{ margin: '0 0 8px 0', color: '#f8fafc' }}>{scheme.title}</h3>
-            <p style={{ margin: '0 0 8px 0', color: '#cbd5e1' }}><strong>Benefit:</strong> {scheme.benefit}</p>
-            <p style={{ margin: '0 0 8px 0', color: '#cbd5e1' }}><strong>Eligibility:</strong> {scheme.eligibility}</p>
-            <p style={{ margin: '0 0 12px 0', color: '#94a3b8', fontSize: '13px' }}>{scheme.ministry}</p>
+          <div key={scheme.id} className="card" style={{ borderLeft: '6px solid #16a34a' }}>
+            <h3 style={{ margin: '0 0 8px 0', color: '#000000', fontSize: 20, fontWeight: 900 }}>{scheme.title}</h3>
+            <p style={{ margin: '0 0 8px 0', color: '#1f2937' }}><strong>Benefit:</strong> {scheme.benefit}</p>
+            <p style={{ margin: '0 0 8px 0', color: '#1f2937' }}><strong>Eligibility:</strong> {scheme.eligibility}</p>
+            <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: '13px', fontWeight: 600 }}>{scheme.ministry}</p>
             <a
               href={scheme.applyUrl}
               target="_blank"
               rel="noreferrer"
-              style={{
-                display: 'inline-block',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                color: '#fff',
-                textDecoration: 'none',
-                fontWeight: 600,
-                border: '1px solid rgba(255,255,255,0.2)'
-              }}
+              className="btn btn-dark"
+              style={{ textDecoration: 'none', padding: '10px 20px', fontSize: 13 }}
             >
-              Apply
+              🚀 Apply on Official Portal →
             </a>
           </div>
         ))

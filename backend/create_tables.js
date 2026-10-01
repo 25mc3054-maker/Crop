@@ -59,6 +59,60 @@ async function createTables() {
       KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
       AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }, { AttributeName: 'schemeId', AttributeType: 'S' }],
       ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.SOCIAL_POSTS_TABLE || 'SocialPosts',
+      KeySchema: [{ AttributeName: 'postId', KeyType: 'HASH' }],
+      AttributeDefinitions: [{ AttributeName: 'postId', AttributeType: 'S' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.FIELDMATE_RELATIONS_TABLE || 'FieldmateRelations',
+      KeySchema: [
+        { AttributeName: 'userId', KeyType: 'HASH' },
+        { AttributeName: 'targetUserId', KeyType: 'RANGE' }
+      ],
+      AttributeDefinitions: [
+        { AttributeName: 'userId', AttributeType: 'S' },
+        { AttributeName: 'targetUserId', AttributeType: 'S' }
+      ],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.SOCIAL_COMMENTS_TABLE || 'SocialComments',
+      KeySchema: [{ AttributeName: 'commentId', KeyType: 'HASH' }],
+      AttributeDefinitions: [{ AttributeName: 'commentId', AttributeType: 'S' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.DIRECT_MESSAGES_TABLE || 'DirectMessages',
+      KeySchema: [
+        { AttributeName: 'conversationId', KeyType: 'HASH' },
+        { AttributeName: 'messageId', KeyType: 'RANGE' }
+      ],
+      AttributeDefinitions: [
+        { AttributeName: 'conversationId', AttributeType: 'S' },
+        { AttributeName: 'messageId', AttributeType: 'S' }
+      ],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.MODERATION_FLAGS_TABLE || 'ModerationFlags',
+      KeySchema: [{ AttributeName: 'flagId', KeyType: 'HASH' }],
+      AttributeDefinitions: [{ AttributeName: 'flagId', AttributeType: 'S' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
+    },
+    {
+      TableName: process.env.USER_SAVED_BARN_TABLE || 'UserSavedBarn',
+      KeySchema: [
+        { AttributeName: 'userPhone', KeyType: 'HASH' },
+        { AttributeName: 'postId', KeyType: 'RANGE' }
+      ],
+      AttributeDefinitions: [
+        { AttributeName: 'userPhone', AttributeType: 'S' },
+        { AttributeName: 'postId', AttributeType: 'S' }
+      ],
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 }
     }
   ];
 

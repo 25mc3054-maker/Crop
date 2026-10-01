@@ -5,7 +5,9 @@ export const CACHE_KEYS = {
   weather: 'kn_live_weather',
   schemes: 'kn_live_schemes',
   equipment: 'kn_live_equipment',
-  communityNews: 'kn_live_community_news'
+  communityNews: 'kn_live_community_news',
+  commodities: 'kn_live_commodities',
+  loans: 'kn_live_loans'
 }
 
 export function writeLiveCache(key, data) {
@@ -51,10 +53,11 @@ export async function preloadDashboardData() {
   const params = coords ? { lat: coords.lat, lon: coords.lon } : undefined
 
   const tasks = [
-    axios.get(`${API_BASE_URL}/weather/auto`, { params }).then((res) => writeLiveCache(CACHE_KEYS.weather, res.data)),
-    axios.get(`${API_BASE_URL}/government-schemes`, { params }).then((res) => writeLiveCache(CACHE_KEYS.schemes, res.data)),
-    axios.get(`${API_BASE_URL}/equipment-rentals/nearby`, { params }).then((res) => writeLiveCache(CACHE_KEYS.equipment, res.data)),
-    axios.get(`${API_BASE_URL}/community-news`).then((res) => writeLiveCache(CACHE_KEYS.communityNews, res.data))
+    axios.get(`${API_BASE_URL}/weather/auto`, { params }).then((res) => writeLiveCache(CACHE_KEYS.weather, res.data)).catch(() => {}),
+    axios.get(`${API_BASE_URL}/schemes`).then((res) => writeLiveCache(CACHE_KEYS.schemes, res.data)).catch(() => {}),
+    axios.get(`${API_BASE_URL}/commodities/rates`).then((res) => writeLiveCache(CACHE_KEYS.commodities, res.data)).catch(() => {}),
+    axios.get(`${API_BASE_URL}/finance/loans`).then((res) => writeLiveCache(CACHE_KEYS.loans, res.data)).catch(() => {}),
+    axios.get(`${API_BASE_URL}/community-news`).then((res) => writeLiveCache(CACHE_KEYS.communityNews, res.data)).catch(() => {})
   ]
 
   await Promise.allSettled(tasks)

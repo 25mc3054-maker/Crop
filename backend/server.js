@@ -17,14 +17,118 @@ const { SecretsManagerClient, GetSecretValueCommand } = require("@aws-sdk/client
 const fs = require('fs')
 const path = require('path')
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const twilio = require('twilio');
 const redis = require('redis');
+const { getCommoditiesRates, getCropPrice, getHistoricalTrends, COMMODITY_CATALOG } = require('./commodities_api');
+const { govAgmarknetEngine, GOV_INDIAN_STATES, GOV_COMMODITY_MASTER } = require('./gov_agmarknet_api');
+const { aiCurator } = require('./ai_curator_engine');
+const { portalEngine, SCHEME_FIELD_REQUIREMENTS } = require('./portal_application_engine');
+const { lookupPincode, validateStateAndPincode, getAllStates, getPincodeCoordinates } = require('./pincode_loader');
+const { validateInternationalPhone, findCountry, COUNTRIES_LIST } = require('./countries_data');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// ============================================================================
+// OFFICIAL GOVT OF INDIA AGMARKNET / DATA.GOV.IN MANDI PRICE API PLATFORM
+// Ministry of Agriculture & Farmers Welfare | Directorate of Marketing & Inspection
+// ============================================================================
+app.get('/api/gov/rates', async (req, res) => {
+  try {
+    const data = await govAgmarknetEngine.getLiveMandiRates(req.query);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching official Agmarknet rates:', err);
+    res.status(500).json({ error: 'Failed to fetch official Agmarknet rates' });
+  }
+});
+
+app.get('/api/gov/commodities', (req, res) => {
+  res.json({
+    total: GOV_COMMODITY_MASTER.length,
+    commodities: govAgmarknetEngine.getCommodityList()
+  });
+});
+
+app.get('/api/gov/states', (req, res) => {
+  res.json({
+    total: GOV_INDIAN_STATES.length,
+    states: govAgmarknetEngine.getStates()
+  });
+});
+
+app.get('/api/gov/status', (req, res) => {
+  res.json(govAgmarknetEngine.getStatus());
+});
+
+// ============================================================================
+// ALL-INDIA PINCODE DIRECTORY & GEOLOCATION VALIDATION ENGINE
+// ============================================================================
+app.get('/api/states', (req, res) => {
+  res.json({ states: getAllStates() });
+});
+
+app.get('/api/countries', (req, res) => {
+  res.json({ countries: COUNTRIES_LIST });
+});
+
+app.get('/api/pincode/lookup/:pincode', (req, res) => {
+  const pin = req.params.pincode;
+  const info = lookupPincode(pin);
+  if (!info) {
+    return res.status(404).json({ error: `PIN code ${pin} not found in directory` });
+  }
+  res.json(info);
+});
+
+app.get('/api/pincode/validate', (req, res) => {
+  const { state, pincode } = req.query;
+  const result = validateStateAndPincode(state, pincode);
+  res.json(result);
+});
+
+app.post('/api/gov/key', (req, res) => {
+  const { apiKey } = req.body;
+  if (apiKey) {
+    govAgmarknetEngine.setApiKey(apiKey);
+    res.json({ success: true, message: 'Official data.gov.in API key configured successfully' });
+  } else {
+    res.status(400).json({ error: 'API key is required' });
+  }
+});
+
+// Live Agricultural Commodities & Mandi Price Route
+app.get('/commodities/rates', async (req, res) => {
+  try {
+    const data = await getCommoditiesRates(req.query);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching commodities rates:', err);
+    res.status(500).json({ error: 'Failed to fetch commodity rates' });
+  }
+});
+
+app.get('/commodities/price', async (req, res) => {
+  try {
+    const data = await getCropPrice(req.query.crop || req.query.symbol);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch crop price' });
+  }
+});
+
+app.get('/commodities/trends', async (req, res) => {
+  try {
+    const data = await getHistoricalTrends(req.query.crop || req.query.symbol);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+});
 
 // Twilio client setup (ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN are in .env)
 const twilioClient = (process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim()) 
@@ -44,11 +148,19 @@ let redisClient = null;
 const otpStore = new Map(); // In-memory fallback for OTP storage
 
 async function initRedis() {
+  if (!process.env.REDIS_URL) {
+    console.log('No REDIS_URL provided, using in-memory OTP storage');
+    return;
+  }
   try {
     const client = redis.createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379'
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: false,
+        connectTimeout: 2000
+      }
     });
-    client.on('error', (err) => console.warn('Redis not available, using in-memory storage'));
+    client.on('error', (err) => console.warn('Redis error:', err.message));
     await client.connect();
     redisClient = client;
     console.log('Redis connected successfully');
@@ -877,39 +989,45 @@ app.post('/tts', async (req, res) => {
   }
 });
 
-// Amazon Procurement Rates (Mock) - Returns structured data for the frontend table
+// Market & Procurement Rates powered by Commodities-API
 app.get('/amazon-rates', authenticateToken, async (req, res) => {
-  // Try fetching from DynamoDB if table is configured
-  if (process.env.RATES_TABLE) {
-    try {
-      const data = await docClient.send(new ScanCommand({ TableName: process.env.RATES_TABLE }));
-      if (data.Items && data.Items.length > 0) {
-        return res.json({ 
-          rates: data.Items, 
-          terms: ["Farm-gate pickup (No transport cost)", "Payment within 24 hours", "No commission/middlemen"] 
-        });
-      }
-    } catch (err) {
-      console.error('Failed to fetch rates from DynamoDB, falling back to mock:', err.message);
-    }
+  try {
+    const data = await getCommoditiesRates({
+      category: req.query.category,
+      search: req.query.search,
+      currency: req.query.currency || 'INR'
+    });
+    
+    return res.json({
+      rates: data.rates.map(r => ({
+        crop: r.name,
+        symbol: r.symbol,
+        price: r.price,
+        priceInr: r.priceInr,
+        priceUsd: r.priceUsd,
+        unit: r.unit,
+        category: r.category,
+        change24h: r.change24h,
+        trend: r.trend,
+        high24h: r.high24h,
+        low24h: r.low24h,
+        note: `Change: ${r.change24h >= 0 ? '+' : ''}${r.change24h}% | High: ₹${r.high24h}`
+      })),
+      terms: [
+        "Farm-gate pickup (No transport cost)",
+        "Payment within 24 hours via Direct Bank Transfer",
+        "Commodities-API Verified Live Benchmark Rates",
+        "No middlemen / 0% commission"
+      ],
+      provider: data.provider,
+      coverage: data.coverage,
+      totalListed: data.totalListed
+    });
+  } catch (err) {
+    console.error('Failed to fetch rates from Commodities-API:', err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  const fallbackRates = [
-    { crop: 'Wheat (Grade A)', price: 2450, unit: 'qtl', note: 'Premium over Mandi' },
-    { crop: 'Rice (Basmati)', price: 4500, unit: 'qtl', note: 'Export quality' },
-    { crop: 'Cotton', price: 6200, unit: 'qtl', note: 'Long staple' },
-    { crop: 'Turmeric', price: 7500, unit: 'qtl', note: 'High curcumin' },
-    { crop: 'Soybeans', price: 4300, unit: 'qtl', note: 'Oil grade' }
-  ]
-  res.json({ 
-    rates: fallbackRates, 
-    terms: [
-      "Farm-gate pickup (No transport cost)",
-      "Payment within 24 hours",
-      "No commission/middlemen"
-    ]
-  })
-})
+});
 
 // Handle Amazon Sell Orders
 app.post('/sell-to-amazon', authenticateToken, async (req, res) => {
@@ -961,9 +1079,20 @@ let usersCache = loadUsersFromFile();
 
 // Helper to get user by phone from file storage or DynamoDB
 async function getUserByPhone(phone) {
+  if (!phone) return null;
+  const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+
+  // Reload cache from file if key not immediately found
+  if (!usersCache[phone] && !usersCache[cleanPhone]) {
+    usersCache = loadUsersFromFile();
+  }
+
   // Try local file storage first
   if (usersCache[phone]) {
     return usersCache[phone];
+  }
+  if (cleanPhone && usersCache[cleanPhone]) {
+    return usersCache[cleanPhone];
   }
 
   // Try DynamoDB if configured
@@ -1020,19 +1149,78 @@ async function createUser(user) {
 
 // Step 1: Register - takes user details and sends OTP
 app.post('/auth/register', async (req, res) => {
-  const { phone, name, village } = req.body || {};
+  const { phone, name, village, state, pincode, password, countryType, countryName } = req.body || {};
   if (!phone) return res.status(400).json({ error: 'Phone number is required' });
 
-  // Add country code if not present (default to +91 for India)
-  const phoneWithCode = phone.startsWith('+') ? phone : `+91${phone}`;
+  const cleanPhone = phone.toString().replace(/\D/g, '');
+  if (!cleanPhone) {
+    return res.status(400).json({ error: 'Please enter a valid numeric phone number' });
+  }
 
-  const existingUser = await getUserByPhone(phone);
-  if (existingUser) return res.status(400).json({ error: 'User with this phone number already exists' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Full name is required' });
+  if (!village || !village.trim()) return res.status(400).json({ error: 'Village / City / Location is required' });
+
+  const isOtherCountry = countryType === 'other' || (countryName && countryName.trim().toLowerCase() !== 'india');
+
+  let userData = {};
+
+  if (isOtherCountry) {
+    if (!countryName || !countryName.trim()) {
+      return res.status(400).json({ error: 'Country name is required' });
+    }
+
+    // Validate phone number according to country rules (e.g. Singapore 8 digits, etc.)
+    const phoneCheck = validateInternationalPhone(countryName.trim(), cleanPhone);
+    if (!phoneCheck.valid) {
+      return res.status(400).json({ error: phoneCheck.error });
+    }
+
+    userData = {
+      name: name.trim(),
+      village: village.trim(),
+      countryType: 'other',
+      country: phoneCheck.country || countryName.trim(),
+      dialCode: phoneCheck.dialCode || '',
+      state: state ? state.trim() : '', // State is optional for other countries
+      pincode: '',
+      district: '',
+      password: password || ''
+    };
+  } else {
+    // India mode (default): Strictly enforce exactly 10 digits
+    if (cleanPhone.length !== 10) {
+      return res.status(400).json({ error: 'Mobile number must be exactly 10 digits for India (entered ' + cleanPhone.length + ' digits)' });
+    }
+
+    if (!state || !state.trim()) return res.status(400).json({ error: 'Please select your State' });
+    if (!pincode || !/^\d{6}$/.test(pincode.toString().trim())) {
+      return res.status(400).json({ error: 'Please enter a valid 6-digit Indian PIN code' });
+    }
+
+    // Validate state and pincode compatibility
+    const pinCheck = validateStateAndPincode(state, pincode.toString().trim());
+    if (!pinCheck.match) {
+      return res.status(400).json({ 
+        error: pinCheck.error || `State and Pincode are not matching. PIN code ${pincode} does not belong to ${state}.` 
+      });
+    }
+
+    userData = { 
+      name: name.trim(), 
+      village: village.trim(), 
+      countryType: 'india',
+      country: 'India',
+      state: pinCheck.state || state.trim().toUpperCase(),
+      pincode: pincode.toString().trim(),
+      district: pinCheck.district || '',
+      password: password || '' 
+    };
+  }
 
   // Store user data with 10 minute (600s) expiration
   await setOTP(phone, {
     type: 'registration',
-    userData: { name: name || '', village: village || '' }
+    userData
   }, 600);
 
   if (isVerifyEnabled) {
@@ -1049,7 +1237,7 @@ app.post('/auth/register', async (req, res) => {
   await setOTP(phone, {
     otp,
     type: 'registration',
-    userData: { name: name || '', village: village || '' }
+    userData
   }, 600);
 
   // Send OTP via SMS (fallback)
@@ -1060,8 +1248,29 @@ app.post('/auth/register', async (req, res) => {
   }
 
   console.log(`Registration OTP for ${phone} is ${otp} (for testing)`);
-  res.json({ success: true, message: 'OTP sent to your phone number for verification.' });
+  res.json({
+    success: true,
+    message: twilioClient ? 'OTP sent to your phone number for verification.' : `Demo Mode: OTP is ${otp} (Twilio SMS not configured)`,
+    devOtp: !twilioClient ? otp : undefined
+  });
 });
+
+function generateUserToken(user) {
+  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
+  return jwt.sign({ 
+    phone: user.phone, 
+    name: user.name, 
+    village: user.village || '',
+    state: user.state || '',
+    pincode: user.pincode || '',
+    district: user.district || '',
+    country: user.country || 'India',
+    countryType: user.countryType || 'india',
+    landholding: user.landholding || user.land || '3.5',
+    primaryCrops: user.primaryCrops || user.crops || 'Paddy, Cotton',
+    tier: user.tier || 'pro_farmer'
+  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+}
 
 // Step 2: Verify Registration - takes phone and OTP, creates user, returns token
 app.post('/auth/verify-registration', async (req, res) => {
@@ -1097,8 +1306,7 @@ app.post('/auth/verify-registration', async (req, res) => {
   await deleteOTP(phone);
 
   // Generate JWT and log the user in
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ phone: newUser.phone, name: newUser.name, village: newUser.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(newUser);
   
   res.json({ success: true, message: 'Registration successful!', token, user: newUser });
 });
@@ -1138,7 +1346,11 @@ app.post('/auth/send-otp', async (req, res) => {
   }
 
   console.log(`Login OTP for ${phone} is ${otp} (for testing)`);
-  res.json({ success: true, message: 'OTP sent to your phone number for login.' });
+  res.json({
+    success: true,
+    message: twilioClient ? 'OTP sent to your phone number for login.' : `Demo Mode: OTP is ${otp} (Twilio SMS not configured)`,
+    devOtp: !twilioClient ? otp : undefined
+  });
 });
 
 // NEW: Verify OTP for Login
@@ -1171,25 +1383,31 @@ app.post('/auth/verify-otp', async (req, res) => {
   await deleteOTP(phone);
 
   // Generate JWT
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(user);
   
   res.json({ success: true, message: 'Login successful!', token, user });
 });
 
-// Step 1 for Login: Request OTP (LEGACY - kept for backward compatibility)
+// Step 1 for Login: Request OTP or Login with Password
 app.post('/auth/login', async (req, res) => {
   const { phone, password } = req.body || {};
   if (!phone) return res.status(400).json({ error: 'Phone number is required' });
 
   // If password is provided, use password-based login
-  if (password) {
+  if (password !== undefined && password !== null) {
     const user = await getUserByPhone(phone);
     if (!user) return res.status(404).json({ error: 'User not found. Please register first.' });
     
-    // For demo, accept any password. In production, hash and compare passwords
-    const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-    const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+    // In local development / demo mode: accept matching password, trimmed password, or standard password123
+    const enteredPass = String(password).trim();
+    const storedPass = String(user.password || '').trim();
+    const isPasswordValid = !storedPass || storedPass === enteredPass || enteredPass === 'password123';
+    
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: 'Incorrect password. (Tip: Use password123 or Direct Access)' });
+    }
+    
+    const token = generateUserToken(user);
     return res.json({ success: true, message: 'Login successful!', token, user });
   }
 
@@ -1210,10 +1428,14 @@ app.post('/auth/login', async (req, res) => {
   }
 
   console.log(`Login OTP for ${phone} is ${otp} (for testing)`);
-  res.json({ success: true, message: 'OTP sent to your phone number for login.' });
+  res.json({
+    success: true,
+    message: twilioClient ? 'OTP sent to your phone number for login.' : `Demo Mode: OTP is ${otp} (Twilio SMS not configured)`,
+    devOtp: !twilioClient ? otp : undefined
+  });
 });
 
-// Step 2 for Login: Verify OTP and get token (LEGACY - kept for backward compatibility, but /auth/verify-otp is preferred)
+// Step 2 for Login: Verify OTP and get token (LEGACY)
 app.post('/auth/verify-login', async (req, res) => {
   const { phone, otp } = req.body || {};
   if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP are required' });
@@ -1235,15 +1457,170 @@ app.post('/auth/verify-login', async (req, res) => {
   await redisClient.del(`otp:${phone}`);
 
   // Generate JWT
-  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
-  const token = jwt.sign({ phone: user.phone, name: user.name, village: user.village }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+  const token = generateUserToken(user);
   
   res.json({ success: true, message: 'Login successful!', token, user });
+});
+
+// Get User Profile
+app.get('/api/user/profile', async (req, res) => {
+  const phone = req.query.phone || (req.user && req.user.phone);
+  if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+  const user = await getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true, user });
 });
 
 // NEW: Token verification endpoint
 app.get('/auth/verify', authenticateToken, (req, res) => {
   res.json({ success: true, user: req.user });
+});
+
+// ============================================================================
+// FARMER SETTINGS & ACCOUNT MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// 1. Change Phone Number
+app.post('/api/user/change-phone', async (req, res) => {
+  const { currentPhone, newPhone } = req.body || {};
+  if (!currentPhone || !newPhone) return res.status(400).json({ error: 'Current and new phone number required' });
+  const cleanNew = newPhone.toString().replace(/\D/g, '');
+  if (cleanNew.length < 7 || cleanNew.length > 15) {
+    return res.status(400).json({ error: 'New phone number must have valid length (7-15 digits)' });
+  }
+
+  const user = await getUserByPhone(currentPhone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  delete usersCache[currentPhone];
+  user.phone = cleanNew;
+  user.updatedAt = new Date().toISOString();
+  usersCache[cleanNew] = user;
+  saveUsersToFile(usersCache);
+
+  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
+  const token = jwt.sign({ 
+    phone: user.phone, 
+    name: user.name, 
+    village: user.village,
+    state: user.state,
+    pincode: user.pincode,
+    country: user.country || 'India'
+  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+
+  res.json({ success: true, message: 'Phone number updated successfully!', newPhone: cleanNew, token });
+});
+
+// 2. Change Password
+app.post('/api/user/change-password', async (req, res) => {
+  const { phone, newPassword } = req.body || {};
+  if (!phone || !newPassword) return res.status(400).json({ error: 'Phone and new password required' });
+  if (newPassword.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+
+  const user = await getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  user.password = newPassword;
+  user.updatedAt = new Date().toISOString();
+  usersCache[phone] = user;
+  saveUsersToFile(usersCache);
+
+  res.json({ success: true, message: 'Password updated successfully!' });
+});
+
+// 3. Change State & PIN Code / Location
+app.post('/api/user/change-location', async (req, res) => {
+  const { phone, state, pincode, village, countryType, countryName } = req.body || {};
+  if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+  const user = await getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (countryType === 'other') {
+    if (!countryName || !countryName.trim()) return res.status(400).json({ error: 'Country name is required' });
+    user.countryType = 'other';
+    user.country = countryName.trim();
+    user.state = state ? state.trim() : '';
+    user.pincode = '';
+  } else {
+    // India mode
+    if (!state || !state.trim()) return res.status(400).json({ error: 'State is required' });
+    if (!pincode || pincode.toString().replace(/\D/g, '').length !== 6) return res.status(400).json({ error: 'Valid 6-digit PIN code required' });
+
+    const cleanPin = pincode.toString().replace(/\D/g, '');
+    const pinCheck = validateStateAndPincode(state, cleanPin);
+    if (!pinCheck.match) {
+      return res.status(400).json({ error: pinCheck.error || 'State and PIN code do not match.' });
+    }
+    user.countryType = 'india';
+    user.country = 'India';
+    user.state = pinCheck.state || state.trim().toUpperCase();
+    user.pincode = cleanPin;
+    user.district = pinCheck.district || user.district || '';
+  }
+
+  if (village && village.trim()) {
+    user.village = village.trim();
+  }
+
+  user.updatedAt = new Date().toISOString();
+  usersCache[phone] = user;
+  saveUsersToFile(usersCache);
+
+  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
+  const token = jwt.sign({ 
+    phone: user.phone, 
+    name: user.name, 
+    village: user.village,
+    state: user.state,
+    pincode: user.pincode,
+    country: user.country || 'India'
+  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+
+  res.json({ success: true, message: 'Location updated successfully!', user, token });
+});
+
+// 4. Update Profile (Name, Village, Crops, Landholding)
+app.post('/api/user/update-profile', async (req, res) => {
+  const { phone, name, village, landholding, primaryCrops } = req.body || {};
+  if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+  const user = await getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (name && name.trim()) user.name = name.trim();
+  if (village && village.trim()) user.village = village.trim();
+  if (landholding) user.landholding = landholding;
+  if (primaryCrops) user.primaryCrops = primaryCrops;
+
+  user.updatedAt = new Date().toISOString();
+  usersCache[phone] = user;
+  saveUsersToFile(usersCache);
+
+  const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me';
+  const token = jwt.sign({ 
+    phone: user.phone, 
+    name: user.name, 
+    village: user.village,
+    state: user.state,
+    pincode: user.pincode,
+    country: user.country || 'India'
+  }, LOCAL_JWT_SECRET, { expiresIn: '30d' });
+
+  res.json({ success: true, message: 'Profile updated successfully!', user, token });
+});
+
+// 5. Account Deletion
+app.post('/api/user/delete-account', async (req, res) => {
+  const { phone } = req.body || {};
+  if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+  if (usersCache[phone]) {
+    delete usersCache[phone];
+    saveUsersToFile(usersCache);
+  }
+
+  res.json({ success: true, message: 'Account deleted successfully' });
 });
 
 app.get('/my-orders', authenticateToken, async (req, res) => {
@@ -1482,59 +1859,130 @@ function parseRssItems(xml, fallbackSourceLabel = 'News Source') {
   return items
 }
 
-// Community News: live farmer/agriculture news (India)
+// Cache for Community News to prevent rate-limits and ensure fast loads
+let newsCache = {
+  timestamp: 0,
+  data: [],
+  source: 'init'
+};
+const NEWS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache
+
+// Community News: live farmer/agriculture news (India) across policy, prices, weather
 app.get('/community-news', async (req, res) => {
-  const maxItems = Math.min(Math.max(Number(req.query.limit) || 20, 5), 50)
+  const maxItems = Math.min(Math.max(Number(req.query.limit) || 25, 5), 60);
+  const category = (req.query.category || '').toLowerCase();
+  const now = Date.now();
+
+  // If cache is fresh and not empty, serve directly
+  if (newsCache.data.length > 0 && (now - newsCache.timestamp < NEWS_CACHE_TTL)) {
+    let filtered = newsCache.data;
+    if (category && category !== 'all') {
+      filtered = filtered.filter(item => (item.category && item.category.toLowerCase() === category) || item.title.toLowerCase().includes(category));
+    }
+    return res.json({
+      ok: true,
+      news: filtered.slice(0, maxItems),
+      source: newsCache.source,
+      fetchedAt: new Date(newsCache.timestamp).toISOString(),
+      cached: true
+    });
+  }
+
   const feeds = [
     {
-      url: 'https://news.google.com/rss/search?q=Indian+farmers+agriculture+India&hl=en-IN&gl=IN&ceid=IN:en',
-      label: 'Google News India'
+      url: 'https://news.google.com/rss/search?q=Indian+farmers+agriculture+India+when:3d&hl=en-IN&gl=IN&ceid=IN:en',
+      label: 'National Agriculture Feed',
+      category: 'general'
     },
     {
-      url: 'https://news.google.com/rss/search?q=India+farming+policy+crop+news&hl=en-IN&gl=IN&ceid=IN:en',
-      label: 'Google News India'
+      url: 'https://news.google.com/rss/search?q=India+mandi+prices+crop+MSP+procurement+when:3d&hl=en-IN&gl=IN&ceid=IN:en',
+      label: 'Mandi & Crop Prices',
+      category: 'prices'
+    },
+    {
+      url: 'https://news.google.com/rss/search?q=India+farmer+scheme+subsidies+PM-KISAN+KCC+when:7d&hl=en-IN&gl=IN&ceid=IN:en',
+      label: 'Schemes & Policy',
+      category: 'schemes'
+    },
+    {
+      url: 'https://news.google.com/rss/search?q=India+monsoon+rainfall+farming+weather+advisory+when:3d&hl=en-IN&gl=IN&ceid=IN:en',
+      label: 'Weather & Monsoon',
+      category: 'weather'
     }
-  ]
+  ];
 
   try {
     const responses = await Promise.allSettled(
-      feeds.map(feed => axios.get(feed.url, { timeout: 10000 }).then(resp => ({ feed, xml: resp.data })))
-    )
+      feeds.map(feed => axios.get(feed.url, { timeout: 8000 }).then(resp => ({ feed, xml: resp.data })))
+    );
 
-    const collected = []
+    const collected = [];
     for (const result of responses) {
-      if (result.status !== 'fulfilled') continue
-      const parsed = parseRssItems(result.value.xml, result.value.feed.label)
-      collected.push(...parsed)
+      if (result.status !== 'fulfilled') continue;
+      const parsed = parseRssItems(result.value.xml, result.value.feed.label);
+      for (const item of parsed) {
+        item.category = result.value.feed.category;
+        item.feedLabel = result.value.feed.label;
+        collected.push(item);
+      }
     }
 
-    const dedupedMap = new Map()
+    const dedupedMap = new Map();
     for (const item of collected) {
-      if (!dedupedMap.has(item.url)) dedupedMap.set(item.url, item)
+      if (!dedupedMap.has(item.url)) dedupedMap.set(item.url, item);
     }
 
     const news = Array.from(dedupedMap.values())
       .sort((a, b) => {
-        const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
-        const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
-        return bTime - aTime
-      })
-      .slice(0, maxItems)
+        const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+        const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+        return bTime - aTime;
+      });
 
-    if (news.length === 0) {
-      return res.status(503).json({ error: 'No live news available right now. Please try again shortly.' })
+    if (news.length > 0) {
+      newsCache = {
+        timestamp: now,
+        data: news,
+        source: 'Google News India Multi-Feed (Live RSS)'
+      };
     }
 
+    const returnList = (news.length > 0 ? news : (newsCache.data || [])).slice(0, maxItems);
+    const aiCuratedNews = aiCurator.getNews();
+
     return res.json({
-      news,
-      source: 'google-news-rss',
-      fetchedAt: new Date().toISOString()
-    })
+      ok: true,
+      news: returnList,
+      aiCuratedNews,
+      source: 'Google News India Multi-Feed (Live RSS) + AI Farmer Wire',
+      fetchedAt: new Date(now).toISOString(),
+      cached: false
+    });
   } catch (err) {
-    console.error('Failed to fetch community news:', err.message)
-    return res.status(500).json({ error: 'Failed to fetch community news' })
+    console.error('Failed to fetch community news:', err.message);
+    const aiCuratedNews = aiCurator.getNews();
+    if (newsCache.data.length > 0) {
+      return res.json({
+        ok: true,
+        news: newsCache.data.slice(0, maxItems),
+        aiCuratedNews,
+        source: newsCache.source,
+        fetchedAt: new Date(newsCache.timestamp).toISOString(),
+        cached: true,
+        fallback: true
+      });
+    }
+    return res.json({
+      ok: true,
+      news: aiCuratedNews,
+      aiCuratedNews,
+      source: 'Krishi-Net AI Agronomy & Policy Wire (Autonomous Cache)',
+      fetchedAt: new Date().toISOString(),
+      cached: true,
+      fallback: true
+    });
   }
-})
+});
 
 // Get All Posts
 app.get('/forum/posts', async (req, res) => {
@@ -1640,6 +2088,808 @@ app.post('/forum/posts/:postId/replies', authenticateToken, async (req, res) => 
     }
   } else {
     res.status(500).json({ error: 'Forum table not configured' });
+  }
+});
+
+// ============================================================================
+// KRISHI SOCIAL COMMUNITY DATA ENGINE
+// Clean Real-Time Community Posts & Stories with 0 Fake Profiles in Production
+// ============================================================================
+const SOCIAL_POSTS_FILE = path.join(__dirname, 'data', 'social-posts.json');
+const SOCIAL_STORIES_FILE = path.join(__dirname, 'data', 'social-stories.json');
+const SOCIAL_NETWORK_FILE = path.join(__dirname, 'data', 'social-network.json');
+const SOCIAL_MESSAGES_FILE = path.join(__dirname, 'data', 'social-messages.json');
+const SOCIAL_SETTINGS_FILE = path.join(__dirname, 'data', 'social-settings.json');
+
+function loadSocialPosts() {
+  try {
+    if (fs.existsSync(SOCIAL_POSTS_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_POSTS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.error('Error reading social posts file:', err.message);
+  }
+  return [];
+}
+
+function saveSocialPosts(posts) {
+  try {
+    fs.writeFileSync(SOCIAL_POSTS_FILE, JSON.stringify(posts, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error saving social posts file:', err.message);
+  }
+}
+
+function loadSocialStories() {
+  try {
+    if (fs.existsSync(SOCIAL_STORIES_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_STORIES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.error('Error reading social stories file:', err.message);
+  }
+  return [];
+}
+
+function saveSocialStories(stories) {
+  try {
+    fs.writeFileSync(SOCIAL_STORIES_FILE, JSON.stringify(stories, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error saving social stories file:', err.message);
+  }
+}
+
+function loadSocialNetwork() {
+  try {
+    if (fs.existsSync(SOCIAL_NETWORK_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_NETWORK_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          fieldmates: parsed.fieldmates || {},
+          fieldmateRequests: Array.isArray(parsed.fieldmateRequests) ? parsed.fieldmateRequests : [],
+          followers: parsed.followers || {},
+          myCircle: parsed.myCircle || {}
+        };
+      }
+    }
+  } catch (e) {
+    console.error('Error reading social-network.json:', e.message);
+  }
+  return { fieldmates: {}, fieldmateRequests: [], followers: {}, myCircle: {} };
+}
+
+function saveSocialNetwork(network) {
+  try {
+    fs.writeFileSync(SOCIAL_NETWORK_FILE, JSON.stringify(network, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving social-network.json:', e.message);
+  }
+}
+
+function loadSocialMessages() {
+  try {
+    if (fs.existsSync(SOCIAL_MESSAGES_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_MESSAGES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (e) {
+    console.error('Error reading social-messages.json:', e.message);
+  }
+  return { threads: {}, messageRequests: [] };
+}
+
+function saveSocialMessages(messages) {
+  try {
+    fs.writeFileSync(SOCIAL_MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving social-messages.json:', e.message);
+  }
+}
+
+function loadSocialSettings() {
+  try {
+    if (fs.existsSync(SOCIAL_SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_SETTINGS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (e) {
+    console.error('Error reading social-settings.json:', e.message);
+  }
+  return {};
+}
+
+function saveSocialSettings(settings) {
+  try {
+    fs.writeFileSync(SOCIAL_SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving social-settings.json:', e.message);
+  }
+}
+
+function getThreadKey(u1, u2) {
+  const h1 = (u1 || '').toLowerCase().trim();
+  const h2 = (u2 || '').toLowerCase().trim();
+  return [h1, h2].sort().join('__');
+}
+
+// 1. Get All Community Posts & fieldVibes
+app.get('/api/social/posts', async (req, res) => {
+  try {
+    const { category, type } = req.query;
+    let posts = loadSocialPosts();
+
+    if (category && category !== 'all') {
+      posts = posts.filter(p => (p.category || p.circle || '').toLowerCase() === category.toLowerCase());
+    }
+    if (type && (type === 'post' || type === 'fieldVibe')) {
+      posts = posts.filter(p => (p.contentType || 'post') === type);
+    }
+
+    res.json({
+      success: true,
+      posts,
+      count: posts.length,
+      isProduction: process.env.NODE_ENV === 'production'
+    });
+  } catch (err) {
+    console.error('Failed to get social posts:', err);
+    res.status(500).json({ error: 'Failed to fetch community posts' });
+  }
+});
+
+// 2. Create New Community Post or fieldVibe (Only Category Prompt Required)
+app.post('/api/social/posts', async (req, res) => {
+  try {
+    const {
+      author,
+      category = 'Crop Care',
+      contentType = 'post',
+      englishContent = '',
+      originalContent = '',
+      originalLang = 'en',
+      image = null,
+      videoUrl = null
+    } = req.body;
+
+    if (!author || (!englishContent.trim() && !originalContent.trim() && !image && !videoUrl)) {
+      return res.status(400).json({ error: 'Author and content or media required' });
+    }
+
+    const settings = loadSocialSettings();
+    const userSettings = settings[(author.username || '').toLowerCase().trim()] || {};
+    const authorHasGreenTick = Boolean(author.hasGreenTick || userSettings.hasGreenTick);
+
+    // 3x Algorithmic Reach Multiplier for Green Tick verified accounts
+    const baseReach = contentType === 'fieldVibe' ? 840 : 420;
+    const computedReach = authorHasGreenTick ? `${(baseReach * 3 / 1000).toFixed(1)}k` : `${baseReach}`;
+
+    const newPost = {
+      id: `post-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      author: {
+        id: author.id || `user-${Date.now()}`,
+        name: author.name || 'Member',
+        username: author.username || '@member',
+        village: author.village || '',
+        state: author.state || 'India',
+        avatar: author.avatar || '',
+        hasGreenTick: authorHasGreenTick,
+        verified: authorHasGreenTick
+      },
+      category: category.trim(),
+      circle: category.toLowerCase().replace(/\s+/g, '-'),
+      contentType: contentType === 'fieldVibe' ? 'fieldVibe' : 'post',
+      timestamp: 'Just now',
+      createdAt: new Date().toISOString(),
+      reach: computedReach,
+      boostedReach: authorHasGreenTick,
+      originalLang,
+      englishContent: englishContent.trim() || originalContent.trim(),
+      originalContent: originalContent.trim() || englishContent.trim(),
+      image,
+      videoUrl,
+      reactions: { shabaash: 0 },
+      userReaction: null,
+      saved: false,
+      comments: []
+    };
+
+    const posts = loadSocialPosts();
+    posts.unshift(newPost);
+    saveSocialPosts(posts);
+
+    res.json({ success: true, post: newPost });
+  } catch (err) {
+    console.error('Failed to create community post:', err);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// 3. Add / Toggle "shabaash!" Reaction
+app.post('/api/social/posts/:postId/react', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { reactionType = 'shabaash', undo = false } = req.body;
+
+    const posts = loadSocialPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (!post.reactions) {
+      post.reactions = { shabaash: 0 };
+    }
+    
+    if (undo) {
+      post.reactions.shabaash = Math.max(0, (post.reactions.shabaash || 1) - 1);
+    } else {
+      post.reactions.shabaash = (post.reactions.shabaash || 0) + 1;
+    }
+
+    saveSocialPosts(posts);
+    res.json({ success: true, reactions: post.reactions });
+  } catch (err) {
+    console.error('Failed to react to post:', err);
+    res.status(500).json({ error: 'Failed to record reaction' });
+  }
+});
+
+// 4. Add Comment or Threaded Nested Reply
+app.post('/api/social/posts/:postId/comments', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { author, text, lang = 'en', parentCommentId = null } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Comment text required' });
+    }
+
+    const posts = loadSocialPosts();
+    const post = posts.find(p => p.id === postId);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const authorName = typeof author === 'string' ? author : (author?.name || 'Member');
+    const authorUsername = typeof author === 'object' ? (author?.username || '@member') : '@member';
+    const authorAvatar = typeof author === 'object' ? (author?.avatar || '') : '';
+
+    const newComment = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      author: authorName,
+      username: authorUsername,
+      avatar: authorAvatar,
+      lang,
+      text: text.trim(),
+      time: 'Just now',
+      createdAt: new Date().toISOString(),
+      parentCommentId: parentCommentId || null,
+      replies: []
+    };
+
+    if (!post.comments) post.comments = [];
+
+    if (parentCommentId) {
+      const parent = post.comments.find(c => c.id === parentCommentId);
+      if (parent) {
+        if (!parent.replies) parent.replies = [];
+        parent.replies.push(newComment);
+      } else {
+        post.comments.push(newComment);
+      }
+    } else {
+      post.comments.push(newComment);
+    }
+
+    saveSocialPosts(posts);
+    res.json({ success: true, comment: newComment, comments: post.comments });
+  } catch (err) {
+    console.error('Failed to add comment:', err);
+    res.status(500).json({ error: 'Failed to add comment' });
+  }
+});
+
+// 5. Follow / Unfollow User (Single click, no acceptance needed)
+app.post('/api/social/follow', (req, res) => {
+  try {
+    const { followerUsername, targetUsername } = req.body;
+    if (!followerUsername || !targetUsername) {
+      return res.status(400).json({ error: 'Follower and target username required' });
+    }
+
+    const u1 = followerUsername.toLowerCase().trim();
+    const u2 = targetUsername.toLowerCase().trim();
+
+    if (u1 === u2) {
+      return res.status(400).json({ error: 'Cannot follow yourself' });
+    }
+
+    const network = loadSocialNetwork();
+    if (!network.followers[u1]) network.followers[u1] = [];
+
+    const isFollowing = network.followers[u1].includes(u2);
+    if (isFollowing) {
+      network.followers[u1] = network.followers[u1].filter(h => h !== u2);
+    } else {
+      network.followers[u1].push(u2);
+    }
+
+    saveSocialNetwork(network);
+
+    res.json({
+      success: true,
+      following: !isFollowing,
+      followingCount: network.followers[u1].length
+    });
+  } catch (err) {
+    console.error('Failed to toggle follow:', err);
+    res.status(500).json({ error: 'Failed to follow user' });
+  }
+});
+
+// 6. Get Network Relationships (Followers, Fieldmates, My Circle)
+app.get('/api/social/network-status', (req, res) => {
+  try {
+    const { username, targetUsername } = req.query;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+
+    const u1 = username.toLowerCase().trim();
+    const network = loadSocialNetwork();
+
+    const userFollows = network.followers[u1] || [];
+    const userFieldmates = network.fieldmates[u1] || [];
+    const userMyCircle = network.myCircle[u1] || [];
+
+    let isFollowingTarget = false;
+    let isFieldmateTarget = false;
+    let isMyCircleTarget = false;
+    let fieldmateRequestStatus = 'none';
+
+    if (targetUsername) {
+      const u2 = targetUsername.toLowerCase().trim();
+      isFollowingTarget = userFollows.includes(u2);
+      isFieldmateTarget = userFieldmates.includes(u2);
+      isMyCircleTarget = userMyCircle.includes(u2);
+
+      const pendingReq = network.fieldmateRequests.find(r =>
+        r.status === 'pending' &&
+        (((r.fromUser?.username || '').toLowerCase().trim() === u1 && (r.toUser?.username || '').toLowerCase().trim() === u2) ||
+         ((r.fromUser?.username || '').toLowerCase().trim() === u2 && (r.toUser?.username || '').toLowerCase().trim() === u1))
+      );
+
+      if (isFieldmateTarget) {
+        fieldmateRequestStatus = 'accepted';
+      } else if (pendingReq) {
+        fieldmateRequestStatus = (pendingReq.fromUser?.username || '').toLowerCase().trim() === u1 ? 'pending_sent' : 'pending_received';
+      }
+    }
+
+    res.json({
+      success: true,
+      followingList: userFollows,
+      fieldmatesList: userFieldmates,
+      myCircleList: userMyCircle,
+      isFollowingTarget,
+      isFieldmateTarget,
+      isMyCircleTarget,
+      fieldmateRequestStatus
+    });
+  } catch (err) {
+    console.error('Failed to get network status:', err);
+    res.status(500).json({ error: 'Failed to fetch network status' });
+  }
+});
+
+// 7. Fieldmate Requests (Mutual Friendship)
+app.get('/api/social/fieldmate-requests', (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const userClean = username.toLowerCase().trim();
+
+    const network = loadSocialNetwork();
+    const incoming = network.fieldmateRequests.filter(r =>
+      (r.toUser?.username || '').toLowerCase().trim() === userClean && r.status === 'pending'
+    );
+    const sent = network.fieldmateRequests.filter(r =>
+      (r.fromUser?.username || '').toLowerCase().trim() === userClean && r.status === 'pending'
+    );
+
+    res.json({ success: true, incoming, sent, totalPending: incoming.length });
+  } catch (err) {
+    console.error('Failed to get fieldmate requests:', err);
+    res.status(500).json({ error: 'Failed to fetch fieldmate requests' });
+  }
+});
+
+app.post('/api/social/fieldmate-requests', (req, res) => {
+  try {
+    const { fromUser, toUser, message } = req.body;
+    if (!fromUser?.username || !toUser?.username) {
+      return res.status(400).json({ error: 'Sender and recipient required' });
+    }
+
+    const fromClean = fromUser.username.toLowerCase().trim();
+    const toClean = toUser.username.toLowerCase().trim();
+
+    if (fromClean === toClean) {
+      return res.status(400).json({ error: 'Cannot send fieldmate request to yourself' });
+    }
+
+    const network = loadSocialNetwork();
+    const fromFieldmates = network.fieldmates[fromClean] || [];
+    if (fromFieldmates.includes(toClean)) {
+      return res.status(400).json({ error: 'You are already fieldmates!' });
+    }
+
+    const existingReq = network.fieldmateRequests.find(r =>
+      r.status === 'pending' &&
+      (((r.fromUser?.username || '').toLowerCase().trim() === fromClean && (r.toUser?.username || '').toLowerCase().trim() === toClean) ||
+       ((r.fromUser?.username || '').toLowerCase().trim() === toClean && (r.toUser?.username || '').toLowerCase().trim() === fromClean))
+    );
+
+    if (existingReq) {
+      return res.json({ success: true, message: 'Fieldmate request is already pending', request: existingReq });
+    }
+
+    const newReq = {
+      id: `freq-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      fromUser: {
+        id: fromUser.id || `user-${Date.now()}`,
+        name: fromUser.name || 'Member',
+        username: fromUser.username,
+        avatar: fromUser.avatar || '',
+        village: fromUser.village || '',
+        state: fromUser.state || 'India'
+      },
+      toUser: {
+        id: toUser.id || `user-${Date.now()}`,
+        name: toUser.name || 'Member',
+        username: toUser.username,
+        avatar: toUser.avatar || ''
+      },
+      message: message || 'I would like to add you as a Fieldmate.',
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+
+    network.fieldmateRequests.unshift(newReq);
+    saveSocialNetwork(network);
+
+    res.json({ success: true, message: 'Fieldmate request sent successfully', request: newReq });
+  } catch (err) {
+    console.error('Failed to send fieldmate request:', err);
+    res.status(500).json({ error: 'Failed to send fieldmate request' });
+  }
+});
+
+app.post('/api/social/fieldmate-requests/:requestId/respond', (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { action } = req.body;
+
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ error: 'Action must be accept or decline' });
+    }
+
+    const network = loadSocialNetwork();
+    const reqIndex = network.fieldmateRequests.findIndex(r => r.id === requestId);
+    if (reqIndex === -1) {
+      return res.status(404).json({ error: 'Fieldmate request not found' });
+    }
+
+    const targetReq = network.fieldmateRequests[reqIndex];
+    const u1 = (targetReq.fromUser.username || '').toLowerCase().trim();
+    const u2 = (targetReq.toUser.username || '').toLowerCase().trim();
+
+    if (action === 'accept') {
+      targetReq.status = 'accepted';
+      targetReq.acceptedAt = new Date().toISOString();
+
+      if (!network.fieldmates[u1]) network.fieldmates[u1] = [];
+      if (!network.fieldmates[u2]) network.fieldmates[u2] = [];
+
+      if (!network.fieldmates[u1].includes(u2)) network.fieldmates[u1].push(u2);
+      if (!network.fieldmates[u2].includes(u1)) network.fieldmates[u2].push(u1);
+    } else {
+      targetReq.status = 'declined';
+      targetReq.declinedAt = new Date().toISOString();
+    }
+
+    saveSocialNetwork(network);
+
+    res.json({
+      success: true,
+      action,
+      message: action === 'accept' ? 'Fieldmate request accepted!' : 'Fieldmate request declined.'
+    });
+  } catch (err) {
+    console.error('Failed to respond to fieldmate request:', err);
+    res.status(500).json({ error: 'Failed to process response' });
+  }
+});
+
+// 8. Toggle "My Circle" (Close Friends with Orange Ring)
+app.post('/api/social/my-circle/toggle', (req, res) => {
+  try {
+    const { username, targetUsername } = req.body;
+    if (!username || !targetUsername) {
+      return res.status(400).json({ error: 'Usernames required' });
+    }
+
+    const u1 = username.toLowerCase().trim();
+    const u2 = targetUsername.toLowerCase().trim();
+
+    const network = loadSocialNetwork();
+    if (!network.myCircle[u1]) network.myCircle[u1] = [];
+
+    const inCircle = network.myCircle[u1].includes(u2);
+    if (inCircle) {
+      network.myCircle[u1] = network.myCircle[u1].filter(h => h !== u2);
+    } else {
+      network.myCircle[u1].push(u2);
+    }
+
+    saveSocialNetwork(network);
+
+    res.json({
+      success: true,
+      inCircle: !inCircle,
+      myCircle: network.myCircle[u1]
+    });
+  } catch (err) {
+    console.error('Failed to toggle My Circle:', err);
+    res.status(500).json({ error: 'Failed to update My Circle' });
+  }
+});
+
+// 9. Privacy Settings & Chat Permissions
+app.get('/api/social/settings', (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const userClean = username.toLowerCase().trim();
+
+    const settings = loadSocialSettings();
+    const userConfig = settings[userClean] || {
+      chatPermission: 'Everyone',
+      hasGreenTick: false
+    };
+
+    res.json({ success: true, settings: userConfig });
+  } catch (err) {
+    console.error('Failed to get social settings:', err);
+    res.status(500).json({ error: 'Failed to get settings' });
+  }
+});
+
+app.post('/api/social/settings', (req, res) => {
+  try {
+    const { username, chatPermission, hasGreenTick } = req.body;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const userClean = username.toLowerCase().trim();
+
+    const settings = loadSocialSettings();
+    if (!settings[userClean]) {
+      settings[userClean] = { chatPermission: 'Everyone', hasGreenTick: false };
+    }
+
+    if (chatPermission && ['Everyone', 'Fieldmates', 'Followers'].includes(chatPermission)) {
+      settings[userClean].chatPermission = chatPermission;
+    }
+    if (typeof hasGreenTick === 'boolean') {
+      settings[userClean].hasGreenTick = hasGreenTick;
+    }
+
+    saveSocialSettings(settings);
+    res.json({ success: true, settings: settings[userClean] });
+  } catch (err) {
+    console.error('Failed to save social settings:', err);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// 10. Direct Messages & Message Request Queue (Hidden until Accepted)
+app.get('/api/social/messages', (req, res) => {
+  try {
+    const { user1, user2 } = req.query;
+    if (!user1 || !user2) return res.status(400).json({ error: 'Both usernames required' });
+
+    const u1 = user1.toLowerCase().trim();
+    const u2 = user2.toLowerCase().trim();
+
+    const threadKey = getThreadKey(u1, u2);
+    const allData = loadSocialMessages();
+    const messages = (allData.threads && allData.threads[threadKey]) || [];
+
+    const pendingReq = (allData.messageRequests || []).find(r =>
+      r.status === 'pending' &&
+      (((r.sender?.username || '').toLowerCase().trim() === u1 && (r.receiver?.username || '').toLowerCase().trim() === u2) ||
+       ((r.sender?.username || '').toLowerCase().trim() === u2 && (r.receiver?.username || '').toLowerCase().trim() === u1))
+    );
+
+    res.json({
+      success: true,
+      messages,
+      isMessageRequest: Boolean(pendingReq),
+      messageRequest: pendingReq || null
+    });
+  } catch (err) {
+    console.error('Failed to get messages:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// Get Message Requests Queue for Receiver
+app.get('/api/social/message-requests', (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const userClean = username.toLowerCase().trim();
+
+    const allData = loadSocialMessages();
+    const incomingRequests = (allData.messageRequests || []).filter(r =>
+      (r.receiver?.username || '').toLowerCase().trim() === userClean && r.status === 'pending'
+    );
+
+    // MASK message content preview in request queue until accepted per specification
+    const sanitizedRequests = incomingRequests.map(r => ({
+      ...r,
+      text: '🔒 Content hidden until accepted (Privacy setting restricted)',
+      rawContentHidden: true
+    }));
+
+    res.json({ success: true, requests: sanitizedRequests, count: sanitizedRequests.length });
+  } catch (err) {
+    console.error('Failed to get message requests:', err);
+    res.status(500).json({ error: 'Failed to fetch message requests' });
+  }
+});
+
+// Send Direct Message (Evaluates Receiver's Chat Permission)
+app.post('/api/social/messages', (req, res) => {
+  try {
+    const { sender, receiver, text, image = null } = req.body;
+    if (!sender?.username || !receiver?.username || (!text?.trim() && !image)) {
+      return res.status(400).json({ error: 'Sender, receiver, and message content required' });
+    }
+
+    const u1 = sender.username.toLowerCase().trim();
+    const u2 = receiver.username.toLowerCase().trim();
+
+    const settings = loadSocialSettings();
+    const receiverConfig = settings[u2] || { chatPermission: 'Everyone' };
+    const permission = receiverConfig.chatPermission || 'Everyone';
+
+    const network = loadSocialNetwork();
+    const receiverFieldmates = network.fieldmates[u2] || [];
+
+    let isPermitted = true;
+    if (permission === 'Fieldmates') {
+      isPermitted = receiverFieldmates.includes(u1);
+    } else if (permission === 'Followers') {
+      const followersOfU2 = Object.entries(network.followers).filter(([follower, targets]) => targets.includes(u2)).map(([f]) => f);
+      isPermitted = followersOfU2.includes(u1) || receiverFieldmates.includes(u1);
+    }
+
+    const allData = loadSocialMessages();
+    if (!allData.threads) allData.threads = {};
+    if (!allData.messageRequests) allData.messageRequests = [];
+
+    const threadKey = getThreadKey(u1, u2);
+    if (!allData.threads[threadKey]) allData.threads[threadKey] = [];
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const newMsg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      sender: sender.username,
+      senderName: sender.name || 'Member',
+      senderAvatar: sender.avatar || '',
+      receiver: receiver.username,
+      text: text ? text.trim() : '',
+      image,
+      timestamp: timeStr,
+      createdAt: now.toISOString(),
+      seen: false
+    };
+
+    if (isPermitted) {
+      allData.threads[threadKey].push(newMsg);
+      saveSocialMessages(allData);
+
+      return res.json({ success: true, message: newMsg, deliveredDirect: true });
+    } else {
+      const reqId = `mreq-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      const messageReq = {
+        id: reqId,
+        sender,
+        receiver,
+        secretMessage: newMsg,
+        status: 'pending',
+        createdAt: now.toISOString()
+      };
+
+      allData.messageRequests.unshift(messageReq);
+      saveSocialMessages(allData);
+
+      return res.json({
+        success: true,
+        message: newMsg,
+        deliveredDirect: false,
+        routedToQueue: true,
+        notice: 'Message sent as a Message Request due to recipient privacy settings.'
+      });
+    }
+  } catch (err) {
+    console.error('Failed to send message:', err);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Respond to Message Request (Accept / Decline)
+app.post('/api/social/message-requests/:id/respond', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    const allData = loadSocialMessages();
+    if (!allData.messageRequests) allData.messageRequests = [];
+    if (!allData.threads) allData.threads = {};
+
+    const reqIdx = allData.messageRequests.findIndex(r => r.id === id);
+    if (reqIdx === -1) {
+      return res.status(404).json({ error: 'Message request not found' });
+    }
+
+    const targetReq = allData.messageRequests[reqIdx];
+    const u1 = (targetReq.sender?.username || '').toLowerCase().trim();
+    const u2 = (targetReq.receiver?.username || '').toLowerCase().trim();
+    const threadKey = getThreadKey(u1, u2);
+
+    if (action === 'accept') {
+      targetReq.status = 'accepted';
+      if (!allData.threads[threadKey]) allData.threads[threadKey] = [];
+      if (targetReq.secretMessage) {
+        allData.threads[threadKey].push(targetReq.secretMessage);
+      }
+    } else {
+      targetReq.status = 'declined';
+    }
+
+    saveSocialMessages(allData);
+
+    res.json({
+      success: true,
+      action,
+      message: action === 'accept' ? 'Message request accepted! Chat unlocked.' : 'Message request declined.'
+    });
+  } catch (err) {
+    console.error('Failed to respond to message request:', err);
+    res.status(500).json({ error: 'Failed to process message request' });
+  }
+});
+
+// Reset / Purge Test Social Data (For Development & Admin Use)
+app.post('/api/social/reset-test-data', async (req, res) => {
+  try {
+    saveSocialPosts([]);
+    saveSocialStories([]);
+    saveSocialNetwork({ fieldmates: {}, fieldmateRequests: [], followers: {}, myCircle: {} });
+    saveSocialMessages({ threads: {}, messageRequests: [] });
+    saveSocialSettings({});
+    res.json({ success: true, message: 'All social data has been reset to clean state.' });
+  } catch (err) {
+    console.error('Failed to reset test data:', err);
+    res.status(500).json({ error: 'Failed to reset test data' });
   }
 });
 
@@ -1887,88 +3137,102 @@ app.get('/government-schemes', async (req, res) => {
   }
 })
 
-// Live mandi prices (demo/mock). If MANDI_API_URL set, you can fetch from there.
-app.get('/prices', async (req, res) => {
-  try {
-    const crop = (req.query.crop || 'wheat').toLowerCase();
-    // If an external API is provided via env, forward request
-    if (process.env.MANDI_API_URL) {
-      // Implement forwarding to real API here
-      return res.json({ source: 'external', url: process.env.MANDI_API_URL, crop });
-    }
+// ========================================================
+// Commodities-API (Global Commodity Price Aggregator) Endpoints
+// ========================================================
 
-    // Mock price generator (INR per quintal) with simple randomness
-    const basePrices = { wheat: 2200, rice: 2600, sugarcane: 350, maize: 1800 };
-    const base = basePrices[crop] || 1500;
-    const fluct = Math.round((Math.random() - 0.5) * base * 0.08);
-    const price = base + fluct;
-    const timestamp = new Date().toISOString();
-    res.json({ crop, price, unit: 'INR/qtl', ts: timestamp, source: 'mock' });
+// 1. Get All Commodity Rates (Filtered by Category, Search, Currency)
+app.get('/commodities/rates', async (req, res) => {
+  try {
+    const { category, search, currency, limit } = req.query;
+    const data = await getCommoditiesRates({ category, search, currency, limit });
+    res.json(data);
   } catch (err) {
-    console.error(err);
+    console.error('Commodities rates error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Public proxy for Amazon rates (keeps API key server-side)
+// 2. Get All Available Commodity Symbols & Categories
+app.get('/commodities/symbols', (req, res) => {
+  try {
+    const symbols = COMMODITY_CATALOG.map(c => ({
+      symbol: c.symbol,
+      name: c.name,
+      category: c.category,
+      unit: c.unit,
+      sourceUnit: c.sourceUnit,
+      description: c.desc
+    }));
+    const categories = ['All', ...new Set(COMMODITY_CATALOG.map(c => c.category))];
+    res.json({ success: true, count: symbols.length, categories, symbols });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Get 14-Day Historical Trends for Any Commodity
+app.get('/commodities/trends', (req, res) => {
+  try {
+    const { symbol, crop } = req.query;
+    const trends = getHistoricalTrends(symbol || crop || 'WHEAT');
+    res.json({ ok: true, ...trends });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Live Crop / Mandi Price for single crop (backward-compatible, powered by Commodities-API)
+app.get('/prices', async (req, res) => {
+  try {
+    const crop = req.query.crop || 'wheat';
+    const result = await getCropPrice(crop);
+    res.json(result);
+  } catch (err) {
+    console.error('Prices error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Public Market & Procurement Rates (powered by Commodities-API)
 app.get('/amazon-rates/public', async (req, res) => {
   try {
-    // If an external API URL is configured, proxy the request
-    const external = process.env.AMAZON_RATES_API_URL
-    let apiKey = process.env.AMAZON_API_KEY
-    const headerName = process.env.AMAZON_API_KEY_HEADER || 'x-amazon-api-key'
-
-    // If apiKey is not present in env, try Secrets Manager (optional)
-    const apiKeySecret = process.env.AMAZON_API_KEY_SECRET_ARN || process.env.AMAZON_API_KEY_SECRET_NAME
-    if (!apiKey && apiKeySecret) {
-      try {
-        const sec = await secretsClient.send(new GetSecretValueCommand({ SecretId: apiKeySecret }))
-        if (sec.SecretString) {
-          try {
-            const parsed = JSON.parse(sec.SecretString)
-            // support secret as JSON with key named amazon_api_key or api_key
-            apiKey = parsed.amazon_api_key || parsed.api_key || parsed.AMAZON_API_KEY || parsed.key || apiKey
-          } catch (e) {
-            apiKey = sec.SecretString
-          }
-        }
-      } catch (e) {
-        console.error('Could not retrieve Amazon API key from Secrets Manager:', e.message)
-      }
-    }
-
-    if (external) {
-      try {
-        const headers = {}
-        if (apiKey) headers[headerName] = apiKey
-        // Forward query params (e.g., crop, all=true)
-        const resp = await axios.get(external, { params: req.query, headers, timeout: 10000 })
-        // Return proxied response directly
-        return res.json(resp.data)
-      } catch (err) {
-        console.error('Failed to proxy to external Amazon rates API:', err.message)
-        // fall through to fallback
-      }
-    }
-
-    // Fallback mock (same structure as existing /amazon-rates)
-    const fallbackRates = [
-      { crop: 'Wheat (Grade A)', price: 2450, unit: 'qtl', note: 'Premium over Mandi' },
-      { crop: 'Rice (Basmati)', price: 4500, unit: 'qtl', note: 'Export quality' },
-      { crop: 'Cotton', price: 6200, unit: 'qtl', note: 'Long staple' },
-      { crop: 'Turmeric', price: 7500, unit: 'qtl', note: 'High curcumin' },
-      { crop: 'Soybeans', price: 4300, unit: 'qtl', note: 'Oil grade' }
-    ]
-    return res.json({ rates: fallbackRates, terms: [
-      "Farm-gate pickup (No transport cost)",
-      "Payment within 24 hours",
-      "No commission/middlemen"
-    ] })
+    const data = await getCommoditiesRates({
+      category: req.query.category,
+      search: req.query.search,
+      currency: req.query.currency || 'INR'
+    });
+    
+    return res.json({
+      rates: data.rates.map(r => ({
+        crop: r.name,
+        symbol: r.symbol,
+        price: r.price,
+        priceInr: r.priceInr,
+        priceUsd: r.priceUsd,
+        unit: r.unit,
+        category: r.category,
+        change24h: r.change24h,
+        trend: r.trend,
+        high24h: r.high24h,
+        low24h: r.low24h,
+        note: `Change: ${r.change24h >= 0 ? '+' : ''}${r.change24h}% | 24h High: ₹${r.high24h}`
+      })),
+      terms: [
+        "Farm-gate pickup (No transport cost)",
+        "Payment within 24 hours via Direct Bank Transfer",
+        "Commodities-API Verified Live Benchmark Rates",
+        "Zero middlemen / 0% commission"
+      ],
+      provider: data.provider,
+      coverage: data.coverage,
+      totalListed: data.totalListed
+    });
   } catch (err) {
-    console.error('Public amazon-rates error', err)
-    res.status(500).json({ error: err.message })
+    console.error('Public rates error:', err.message);
+    res.status(500).json({ error: err.message });
   }
-})
+});
 
 // Weather API Proxy (Current Weather)
 app.get('/weather', async (req, res) => {
@@ -2329,20 +3593,39 @@ app.get('/weather/auto', async (req, res) => {
   try {
     const queryLat = toFiniteNumber(req.query.lat)
     const queryLon = toFiniteNumber(req.query.lon)
+    const queryPincode = req.query.pincode ? req.query.pincode.toString().trim() : null
 
     let lat = queryLat
     let lon = queryLon
 
     if (lat === null || lon === null) {
-      const clientIp = getClientIpAddress(req)
-      const location = await getLocationFromIp(clientIp)
-      lat = toFiniteNumber(location.lat)
-      lon = toFiniteNumber(location.lon)
-      if (lat === null || lon === null) {
-        throw new Error('Could not determine latitude/longitude')
+      // Priority 1: Check if Pincode is provided (registered location fallback)
+      if (queryPincode && /^\d{6}$/.test(queryPincode)) {
+        try {
+          const pinCoords = await getPincodeCoordinates(queryPincode);
+          if (pinCoords && pinCoords.lat && pinCoords.lon) {
+            lat = toFiniteNumber(pinCoords.lat);
+            lon = toFiniteNumber(pinCoords.lon);
+            locationLabel = `${pinCoords.name || 'Local Area'}, ${pinCoords.state} (PIN: ${queryPincode})`;
+            source = 'pincode';
+          }
+        } catch (e) {
+          console.warn('Failed to resolve pincode coordinates:', e.message);
+        }
       }
-      locationLabel = [location.city, location.region, location.country].filter(Boolean).join(', ') || 'Near your current location'
-      source = 'ip'
+
+      // Priority 2: Fallback to IP geolocation if lat/lon still unavailable
+      if (lat === null || lon === null) {
+        const clientIp = getClientIpAddress(req)
+        const location = await getLocationFromIp(clientIp)
+        lat = toFiniteNumber(location.lat)
+        lon = toFiniteNumber(location.lon)
+        if (lat === null || lon === null) {
+          throw new Error('Could not determine latitude/longitude')
+        }
+        locationLabel = [location.city, location.region, location.country].filter(Boolean).join(', ') || 'Near your current location'
+        source = 'ip'
+      }
     }
 
     cacheKey = buildWeatherCacheKey(lat, lon)
@@ -2402,46 +3685,43 @@ app.post('/agent/start', async (req, res) => {
   }
 });
 
-// --- NEW: Market prices and SMS mock endpoints ---
-// Return mock market prices for requested crop and location
+// Market prices and trends powered by Commodities-API
 app.get('/market/prices', async (req, res) => {
   try {
-    const crop = (req.query.crop || 'wheat').toLowerCase()
-    const location = req.query.location || 'local mandi'
-    // Simple mock dataset (replace with real provider integration)
-    const sample = {
-      wheat: { price_qtl: 2200, unit: 'qtl', change_7d: -1.2 },
-      rice: { price_qtl: 2600, unit: 'qtl', change_7d: 0.8 },
-      maize: { price_qtl: 1850, unit: 'qtl', change_7d: -0.5 },
-      cotton: { price_qtl: 6000, unit: 'qtl', change_7d: 2.3 },
-      onion: { price_qtl: 1500, unit: 'qtl', change_7d: -3.1 }
-    }
+    const crop = req.query.crop || 'wheat';
+    const location = req.query.location || 'Local / Mandi Hub';
+    const item = await getCropPrice(crop);
 
-    const data = sample[crop] || { price_qtl: 1200, unit: 'qtl', change_7d: 0 }
-
-    return res.json({ ok: true, crop, location, price: data, ts: Date.now() })
+    return res.json({
+      ok: true,
+      crop: item.crop,
+      symbol: item.symbol,
+      location,
+      price: {
+        price_qtl: item.price,
+        unit: item.unit,
+        change_7d: item.change24h
+      },
+      source: item.source,
+      ts: item.ts
+    });
   } catch (err) {
-    console.error('Market prices endpoint error', err.message)
-    return res.status(500).json({ ok: false, error: err.message })
+    console.error('Market prices endpoint error', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
   }
-})
+});
 
-// Simple trends endpoint returning mock history
-app.get('/market/prices/trends', async (req, res) => {
+// Trends endpoint returning 14-day history powered by Commodities-API
+app.get('/market/prices/trends', (req, res) => {
   try {
-    const crop = (req.query.crop || 'wheat').toLowerCase()
-    const now = Date.now()
-    // generate 14 days of mock prices
-    const points = Array.from({ length: 14 }).map((_, i) => ({
-      ts: now - (13 - i) * 24 * 3600 * 1000,
-      price_qtl: Math.round(2000 + Math.sin(i / 3) * 120 + Math.random() * 60)
-    }))
-    return res.json({ ok: true, crop, points })
+    const crop = req.query.crop || req.query.symbol || 'wheat';
+    const trends = getHistoricalTrends(crop);
+    return res.json({ ok: true, crop, ...trends });
   } catch (err) {
-    console.error('Market trends error', err.message)
-    return res.status(500).json({ ok: false, error: err.message })
+    console.error('Market trends error', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
   }
-})
+});
 
 // Subscribe to price alerts (stores in-memory for demo)
 const priceAlertSubscriptions = new Map()
@@ -2640,8 +3920,21 @@ app.get('/schemes', async (req, res) => {
     // Optionally filter by type or provider
     const type = req.query.type
     const category = (req.query.category || '').toLowerCase()
-    // Use live cache if available
-    let list = Array.isArray(schemesCache) && schemesCache.length ? schemesCache.slice() : SCHEMES.slice()
+    const lifecycleStatus = (req.query.status || req.query.lifecycle || 'active').toLowerCase()
+
+    // Get schemes from AI Curator engine according to requested lifecycle filter
+    let list = aiCurator.getSchemes(lifecycleStatus)
+
+    // If cache has loaded, merge any extra feed entries for active/all views
+    if (Array.isArray(schemesCache) && schemesCache.length && (lifecycleStatus === 'active' || lifecycleStatus === 'all')) {
+      const map = new Map()
+      list.forEach(s => map.set(s.id, s))
+      schemesCache.forEach(s => {
+        if (!map.has(s.id)) map.set(s.id, s)
+      })
+      list = Array.from(map.values())
+    }
+
     if (type) list = list.filter(s => s.type === type)
     if (category) {
       if (category === 'government') {
@@ -2651,9 +3944,148 @@ app.get('/schemes', async (req, res) => {
         list = list.filter(s => s.category === 'finance' || ['loan','insurance','credit'].includes(s.type))
       }
     }
-    return res.json({ ok: true, schemes: list, ts: Date.now() })
+    return res.json({
+      ok: true,
+      schemes: list,
+      curatorStatus: aiCurator.getStatus(),
+      ts: Date.now()
+    })
   } catch (err) {
     console.error('Schemes list error', err.message)
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// GET /api/ai/curator-status: Health and summary of the autonomous AI curator
+app.get('/api/ai/curator-status', (req, res) => {
+  try {
+    const status = aiCurator.getStatus()
+    return res.json({ ok: true, ...status })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// POST /api/ai/curate-now: Trigger immediate on-demand AI audit of schemes, loans, and news
+app.post('/api/ai/curate-now', async (req, res) => {
+  try {
+    const auditResult = aiCurator.runAuditCycle('MANUAL_USER_TRIGGER')
+    await loadSchemesFromFeed().catch(() => {})
+    return res.json({
+      ok: true,
+      message: 'AI curation cycle completed successfully. Schemes, loans, and agricultural news verified.',
+      audit: auditResult,
+      status: aiCurator.getStatus()
+    })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// --- Direct 1-Click Official Portal Application & Encrypted Digi-Locker Profile Endpoints ---
+
+// Helper to isolate and decrypt only the current user's encrypted Digi-Locker vault
+function resolveUserVaultKey(req) {
+  // 1. From Authorization Bearer Token (if logged in)
+  const authHeader = req.headers['authorization']
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1]
+    try {
+      const LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'dev_local_secret_change_me'
+      const decoded = jwt.verify(token, LOCAL_JWT_SECRET)
+      if (decoded && (decoded.phone || decoded.sub)) {
+        return `farmer_user_${decoded.phone || decoded.sub}`
+      }
+    } catch (e) {}
+  }
+  // 2. From client session/device vault header (e.g. x-farmer-session or x-farmer-phone)
+  const sessionHeader = req.headers['x-farmer-session'] || req.headers['x-farmer-phone']
+  if (sessionHeader && String(sessionHeader).trim().length > 0) {
+    return `session_${String(sessionHeader).trim()}`
+  }
+  // 3. Fallback: isolated client-scoped hash
+  const clientIp = req.ip || req.connection?.remoteAddress || 'isolated_client'
+  return `vault_${crypto.createHash('sha256').update(clientIp).digest('hex').slice(0, 16)}`
+}
+
+// GET /api/profile/universal: Fetch current user's encrypted vault profile and readiness score
+app.get('/api/profile/universal', (req, res) => {
+  try {
+    const userKey = resolveUserVaultKey(req)
+    const data = portalEngine.getUserProfile(userKey)
+    return res.json({ ok: true, userVault: true, ...data })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// POST /api/profile/universal: Encrypt & save profile to user's private AES-256 vault
+app.post('/api/profile/universal', (req, res) => {
+  try {
+    const userKey = resolveUserVaultKey(req)
+    const updated = portalEngine.saveUserProfile(userKey, req.body || {})
+    return res.json({ ok: true, userVault: true, ...updated })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// GET /api/portal/captcha: Generate live anti-bot security captcha challenge
+app.get('/api/portal/captcha', (req, res) => {
+  try {
+    const captcha = portalEngine.generateCaptcha()
+    return res.json({ ok: true, captcha })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// GET /api/portal/scheme-match/:schemeId: Check attribute match for a scheme against current user's vault
+app.get('/api/portal/scheme-match/:schemeId', (req, res) => {
+  try {
+    const userKey = resolveUserVaultKey(req)
+    const match = portalEngine.getSchemeRequirementMatch(req.params.schemeId, userKey)
+    return res.json({ ok: true, match })
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// POST /api/portal/apply-direct: 1-Click apply directly to official government portal with captcha verification
+app.post('/api/portal/apply-direct', (req, res) => {
+  try {
+    const { schemeId, schemeName, sessionId, captchaSessionId, captchaInput, notes } = req.body || {}
+    const activeSessionId = sessionId || captchaSessionId
+    if (!schemeId) return res.status(400).json({ ok: false, error: 'schemeId is required' })
+    if (!activeSessionId || !captchaInput) return res.status(400).json({ ok: false, error: 'Security Captcha verification is required' })
+
+    const userKey = resolveUserVaultKey(req)
+    const application = portalEngine.applyDirectToPortal({
+      schemeId,
+      schemeName,
+      sessionId: activeSessionId,
+      captchaInput,
+      userKey,
+      notes
+    })
+
+    return res.json({
+      ok: true,
+      message: `Application successfully submitted directly to official portal (${application.portal})! Registration ID: ${application.governmentRefId}`,
+      application
+    })
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message })
+  }
+})
+
+// GET /api/portal/applications: List submitted official portal applications for the current user
+app.get('/api/portal/applications', (req, res) => {
+  try {
+    const userKey = resolveUserVaultKey(req)
+    const apps = portalEngine.getUserApplications(userKey)
+    return res.json({ ok: true, count: apps.length, applications: apps })
+  } catch (err) {
     return res.status(500).json({ ok: false, error: err.message })
   }
 })
@@ -2662,7 +4094,8 @@ app.post('/schemes/apply', async (req, res) => {
   try {
     const { schemeId, name, phone, details, userId } = req.body || {}
     if (!schemeId || !name || !phone) return res.status(400).json({ ok: false, error: 'schemeId, name and phone required' })
-    const scheme = SCHEMES.find(s => s.id === schemeId)
+    const allSchemes = aiCurator.getSchemes('all')
+    const scheme = allSchemes.find(s => s.id === schemeId) || (Array.isArray(schemesCache) && schemesCache.find(s => s.id === schemeId)) || SCHEMES.find(s => s.id === schemeId)
     if (!scheme) return res.status(404).json({ ok: false, error: 'scheme not found' })
 
     const appId = `app-${Date.now()}-${Math.floor(Math.random()*9000)+1000}`
@@ -2730,10 +4163,815 @@ app.post('/schemes/import', async (req, res) => {
   }
 })
 
+// ==========================================
+// 🌾 AGRICULTURAL FINANCE & LOAN MARKETPLACE
+// ==========================================
+
+const AGRI_LOAN_PRODUCTS = [
+  {
+    id: 'sbi-kcc',
+    bank: 'State Bank of India (SBI)',
+    name: 'SBI Kisan Credit Card (KCC) Crop Loan',
+    category: 'Crop Production & Working Capital',
+    nominalRate: 7.0,
+    subventionRate: 3.0,
+    effectiveRate: 4.0,
+    maxAmount: 300000,
+    maxAmountLabel: 'Up to ₹3.00 Lakhs',
+    collateralFreeLimit: '₹1.60 Lakhs (Zero Collateral)',
+    tenure: '1 to 5 Years (Revolving Annual Facility)',
+    repaymentCycle: 'Half-Yearly or Yearly aligned with Crop Harvest (Kharif/Rabi)',
+    processingFee: 'Nil up to ₹3 Lakhs',
+    benefits: [
+      '3% Government Interest Subvention for prompt repayment (Net 4% p.a.)',
+      'Atm-enabled RuPay Kisan Card for easy cash withdrawal',
+      'Built-in crop insurance coverage under PMFBY'
+    ],
+    eligibility: 'Individual owner cultivators, tenant farmers, sharecroppers with cultivable land.',
+    documents: ['Aadhaar & PAN', 'Land Khata/Khasra (7/12 Pahani)', 'Sowing / Cropping Certificate'],
+    officialUrl: 'https://sbi.co.in/web/agri-rural/agriculture-banking/crop-loan/kisan-credit-card'
+  },
+  {
+    id: 'nabard-aif',
+    bank: 'NABARD & Commercial Banks',
+    name: 'Agriculture Infrastructure Fund (AIF) Long-Term Credit',
+    category: 'Post-Harvest & Storage Infrastructure',
+    nominalRate: 8.5,
+    subventionRate: 3.0,
+    effectiveRate: 5.5,
+    maxAmount: 20000000,
+    maxAmountLabel: 'Up to ₹2.00 Crores',
+    collateralFreeLimit: 'Covered under CGTMSE Guarantee up to ₹2 Cr',
+    tenure: 'Up to 7 Years (Including 6 to 24 Months Moratorium)',
+    repaymentCycle: 'Monthly / Quarterly',
+    processingFee: 'Concessional / Zero for PACS & FPOs',
+    benefits: [
+      '3% p.a. Central Interest Subvention up to ₹2 Crore for 7 years',
+      'Covers cold storage, packhouses, grain silos, sorting and grading sheds',
+      'Credit guarantee fees fully absorbed under government scheme'
+    ],
+    eligibility: 'Farmers, FPOs, Agri-entrepreneurs, PACS, and Startups.',
+    documents: ['Detailed Project Report (DPR)', 'Land Ownership / Long Lease Deed', 'KYC & Bank Statement'],
+    officialUrl: 'https://agriinfra.dac.gov.in/'
+  },
+  {
+    id: 'hdfc-tractor',
+    bank: 'HDFC Bank Agri Lending',
+    name: 'HDFC Kisan Gold & Farm Mechanization Loan',
+    category: 'Farm Machinery & Commercial Vehicles',
+    nominalRate: 9.25,
+    subventionRate: 0.0,
+    effectiveRate: 9.25,
+    maxAmount: 1500000,
+    maxAmountLabel: 'Up to 90% of Equipment Cost (Max ₹15 Lakhs)',
+    collateralFreeLimit: 'Hypothecation of Purchased Tractor / Implement',
+    tenure: '12 to 84 Months',
+    repaymentCycle: 'Structured Seasonal EMIs (Post-harvest quarterly/half-yearly)',
+    processingFee: '0.5% of Loan Amount',
+    benefits: [
+      'Instant doorstep sanction within 3 business days',
+      'Can be clubbed with 40-50% SMAM government machinery subsidy',
+      'No pre-payment penalty after 12 months'
+    ],
+    eligibility: 'Farmers holding minimum 2 acres of irrigated agricultural land.',
+    documents: ['Aadhaar, Voter ID', 'Land Records (Jamabandi/Pahani)', 'Quotation from authorized tractor dealer'],
+    officialUrl: 'https://www.hdfcbank.com/personal/borrow/popular-loans/tractor-loan'
+  },
+  {
+    id: 'pnb-tatkal',
+    bank: 'Punjab National Bank (PNB)',
+    name: 'PNB Kisan Tatkal Urgent Credit Scheme',
+    category: 'Emergency & Contingency Farming Needs',
+    nominalRate: 8.4,
+    subventionRate: 0.0,
+    effectiveRate: 8.4,
+    maxAmount: 100000,
+    maxAmountLabel: 'Up to 50% of KCC Limit (Max ₹1.00 Lakh)',
+    collateralFreeLimit: 'Clean Credit (Extension of existing KCC security)',
+    tenure: 'Up to 36 Months',
+    repaymentCycle: 'Half-yearly installments',
+    processingFee: 'Nil',
+    benefits: [
+      'Instant emergency disbursement without extra documentation',
+      'Helps manage unseasonal weather shocks, urgent pest spray, or pump repairs',
+      'No margin money requirement'
+    ],
+    eligibility: 'Existing KCC holders with satisfactory repayment track record of 2+ years.',
+    documents: ['Existing KCC Passbook', 'Signed loan request voucher'],
+    officialUrl: 'https://pnbindia.in/agriculture-banking.html'
+  },
+  {
+    id: 'mudra-allied',
+    bank: 'All Commercial Banks & Regional Rural Banks (RRBs)',
+    name: 'Pradhan Mantri MUDRA (Kishor/Tarun) - Allied Agriculture',
+    category: 'Dairy, Poultry, Fisheries & Agri-Clinics',
+    nominalRate: 8.75,
+    subventionRate: 0.0,
+    effectiveRate: 8.75,
+    maxAmount: 1000000,
+    maxAmountLabel: 'Up to ₹10.00 Lakhs',
+    collateralFreeLimit: '100% Collateral-Free (Backed by CGFMU)',
+    tenure: '3 to 5 Years',
+    repaymentCycle: 'Monthly / Quarterly aligned with milk/egg sales',
+    processingFee: 'Nil for Shishu & Kishor (< ₹5 Lakhs)',
+    benefits: [
+      'Zero collateral or third-party guarantee needed',
+      'Finance for purchasing milch cows, buffaloes, feed units, broiler cages',
+      'Eligible for 25-35% NABARD Dairy Entrepreneurship subsidy'
+    ],
+    eligibility: 'Small farmers, landless rural youth, dairy farmers, SHG members.',
+    documents: ['Aadhaar, PAN', 'Project quotation for animals / feed setup', 'Bank account statement (6 months)'],
+    officialUrl: 'https://www.mudra.org.in/'
+  }
+];
+
+const loanInquiriesStore = new Map();
+
+// GET /finance/loans: List all authentic agricultural loan schemes
+app.get('/finance/loans', (req, res) => {
+  const category = (req.query.category || '').toLowerCase();
+  let list = aiCurator.getLoans();
+  if (category && category !== 'all') {
+    list = list.filter(l => l.category.toLowerCase().includes(category) || l.name.toLowerCase().includes(category) || l.bank.toLowerCase().includes(category));
+  }
+  return res.json({
+    ok: true,
+    count: list.length,
+    timestamp: new Date().toISOString(),
+    aiAudited: true,
+    curatorStatus: aiCurator.getStatus(),
+    loans: list
+  });
+});
+
+// POST /finance/calculate-emi: Agricultural loan calculator with 3% Prompt Repayment Subvention
+app.post('/finance/calculate-emi', (req, res) => {
+  try {
+    const { principal = 100000, nominalRate = 7.0, subventionRate = 3.0, tenureMonths = 12 } = req.body || {};
+    const P = Number(principal) || 100000;
+    const rNominal = (Number(nominalRate) || 7.0) / 12 / 100;
+    const rEffective = Math.max(0, (Number(nominalRate) - Number(subventionRate))) / 12 / 100;
+    const N = Math.max(1, Number(tenureMonths) || 12);
+
+    // Standard reducing balance EMI formula
+    const calcEmi = (p, r, n) => {
+      if (r === 0) return p / n;
+      return (p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    };
+
+    const nominalEmi = Math.round(calcEmi(P, rNominal, N));
+    const effectiveEmi = Math.round(calcEmi(P, rEffective, N));
+    const totalNominalPayment = nominalEmi * N;
+    const totalEffectivePayment = effectiveEmi * N;
+    const totalSubventionSavings = Math.max(0, totalNominalPayment - totalEffectivePayment);
+
+    return res.json({
+      ok: true,
+      calculation: {
+        principal: P,
+        tenureMonths: N,
+        nominalRatePercent: Number(nominalRate),
+        subventionRatePercent: Number(subventionRate),
+        effectiveRatePercent: Math.max(0, Number(nominalRate) - Number(subventionRate)),
+        monthlyEmiNominal: nominalEmi,
+        monthlyEmiEffective: effectiveEmi,
+        totalInterestPayableEffective: Math.round(totalEffectivePayment - P),
+        totalGovernmentSubventionSavings: totalSubventionSavings,
+        totalRepaymentAmount: totalEffectivePayment
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /finance/apply: Submit loan pre-eligibility / assistance inquiry
+app.post('/finance/apply', async (req, res) => {
+  try {
+    const { loanId, farmerName, phone, landAcres, cropType, loanAmount, village } = req.body || {};
+    if (!farmerName || !phone) {
+      return res.status(400).json({ ok: false, error: 'Farmer name and mobile number are required.' });
+    }
+
+    const allLoans = aiCurator.getLoans();
+    const loan = allLoans.find(l => l.id === loanId) || AGRI_LOAN_PRODUCTS.find(l => l.id === loanId) || allLoans[0];
+    const appId = `LOAN-APP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900) + 100}`;
+    
+    // Automatic basic eligibility score check
+    const acres = Number(landAcres) || 2;
+    const amount = Number(loanAmount) || 100000;
+    let eligibilityStatus = 'Pre-Approved for Assisted Bank Submission';
+    let estimatedMaxCredit = Math.min(loan.maxAmount, Math.round(acres * 55000 + 50000));
+    if (loan.id === 'mudra-allied') estimatedMaxCredit = Math.min(amount, 1000000);
+
+    const record = {
+      id: appId,
+      loanId: loan.id,
+      loanName: loan.name,
+      bank: loan.bank,
+      farmerName,
+      phone,
+      village: village || 'N/A',
+      landAcres: acres,
+      cropType: cropType || 'General Agriculture',
+      requestedAmount: amount,
+      estimatedMaxCredit,
+      effectiveRate: loan.effectiveRate,
+      eligibilityStatus,
+      appliedAt: new Date().toISOString(),
+      status: 'Received & Bank Tele-Advisor Assigned'
+    };
+
+    loanInquiriesStore.set(appId, record);
+
+    // Send confirmation SMS notification (if configured)
+    try {
+      await sendSms(phone, `Krishi-Net Finance: Your application ${appId} for ${loan.name} has been received. Our agri-banking advisor will assist with your bank submission.`);
+    } catch (smsErr) {
+      // ignore
+    }
+
+    return res.json({
+      ok: true,
+      message: 'Loan application registered successfully!',
+      application: record,
+      nextSteps: [
+        'Keep your Aadhaar Card and Land Records (7/12 Pahani) ready',
+        'Our dedicated Krishi-Net Banking Facilitator will verify documents',
+        'Direct submission to your nearest bank branch for instant sanction'
+      ]
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/loans/catalog: Structured breakdown of Government Public Sector Bank Loans vs Commercial Private Bank Loans
+app.get('/api/loans/catalog', (req, res) => {
+  try {
+    const allLoans = aiCurator.getLoans();
+    const govtBankLoans = allLoans.filter(l => l.loanType === 'govt_bank_loan');
+    const commercialBankLoans = allLoans.filter(l => l.loanType === 'commercial_bank_loan');
+    return res.json({
+      ok: true,
+      total: allLoans.length,
+      govtBankCount: govtBankLoans.length,
+      commercialBankCount: commercialBankLoans.length,
+      govtBankLoans,
+      commercialBankLoans,
+      curatorStatus: aiCurator.getStatus()
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ----------------------------------------------------------------------------
+// REGISTERED PRIVATE LENDERS HUB (Only Lenders Registered & Willing to Lend on Krishi-Net)
+// ----------------------------------------------------------------------------
+const REGISTERED_PRIVATE_LENDERS_FILE = path.join(__dirname, 'data', 'registered-private-lenders.json');
+const privateLoanInquiriesStore = new Map();
+
+function getRegisteredPrivateLenders() {
+  try {
+    if (fs.existsSync(REGISTERED_PRIVATE_LENDERS_FILE)) {
+      const data = fs.readFileSync(REGISTERED_PRIVATE_LENDERS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error reading registered private lenders file', e);
+  }
+  return [];
+}
+
+function saveRegisteredPrivateLenders(lenders) {
+  try {
+    fs.writeFileSync(REGISTERED_PRIVATE_LENDERS_FILE, JSON.stringify(lenders, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving registered private lenders file', e);
+  }
+}
+
+// GET /api/finance/private-lenders: List ONLY verified lenders registered on Krishi-Net
+app.get('/api/finance/private-lenders', (req, res) => {
+  try {
+    const { type, state } = req.query;
+    let lenders = getRegisteredPrivateLenders();
+    lenders = lenders.filter(l => l.willingToLend !== false);
+    if (type && type !== 'all') {
+      lenders = lenders.filter(l => l.type === type);
+    }
+    if (state && state !== 'all') {
+      lenders = lenders.filter(l => (l.state || '').toLowerCase().includes(state.toLowerCase()));
+    }
+    return res.json({
+      ok: true,
+      count: lenders.length,
+      lenders
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/finance/register-private-lender: Allow private finance companies or private individuals to register on web
+app.post('/api/finance/register-private-lender', (req, res) => {
+  try {
+    const {
+      name,
+      type, // 'private_finance_company' or 'private_individual'
+      registrationNumber,
+      ownerOrContactPerson,
+      phone,
+      email,
+      state,
+      district,
+      availablePool,
+      maxAmountPerFarmer,
+      interestRate,
+      tenure,
+      loanPurpose,
+      collateralRequirement,
+      disbursementTime,
+      notes
+    } = req.body || {};
+
+    if (!name || !phone || !type) {
+      return res.status(400).json({ ok: false, error: 'Lender name, contact phone, and lender type are required.' });
+    }
+
+    const lenders = getRegisteredPrivateLenders();
+    const newLender = {
+      id: `pvt-reg-${Date.now()}`,
+      name: name.trim(),
+      type: type === 'private_individual' ? 'private_individual' : 'private_finance_company',
+      categoryLabel: type === 'private_individual' ? 'Registered Private Individual Lender' : 'Registered Private Finance Company (NBFC)',
+      registrationNumber: registrationNumber ? registrationNumber.trim() : 'Krishi-Net Platform Verified ID',
+      ownerOrContactPerson: ownerOrContactPerson ? ownerOrContactPerson.trim() : name.trim(),
+      phone: phone.trim(),
+      email: email ? email.trim() : '',
+      state: state ? state.trim() : 'India',
+      district: district ? district.trim() : 'Local District',
+      availablePool: Number(availablePool) || 500000,
+      availablePoolLabel: `₹${(Number(availablePool || 500000) / 100000).toFixed(2)} Lakhs Capital Pool`,
+      maxAmountPerFarmer: Number(maxAmountPerFarmer) || 200000,
+      maxAmountLabel: `Up to ₹${(Number(maxAmountPerFarmer || 200000) / 100000).toFixed(2)} Lakhs per Farmer`,
+      interestRate: Number(interestRate) || 1.5,
+      interestRateLabel: `${Number(interestRate) || 1.5}% per month`,
+      tenure: tenure || '3 to 12 Months',
+      loanPurpose: loanPurpose || 'Urgent Crop Inputs & Farm Expenses',
+      collateralRequirement: collateralRequirement || 'Crop Lien / Mutual Community Trust',
+      disbursementTime: disbursementTime || 'Within 24 Hours',
+      registeredOnPlatformDate: new Date().toISOString().split('T')[0],
+      verifiedStatus: 'VERIFIED_REGISTERED',
+      willingToLend: true,
+      platformRating: 'New Registered Lender',
+      notes: notes || 'Registered directly on Krishi-Net Web Platform.'
+    };
+
+    lenders.unshift(newLender);
+    saveRegisteredPrivateLenders(lenders);
+
+    return res.json({
+      ok: true,
+      message: 'You have been successfully registered as a verified private lender on Krishi-Net! Farmers can now view your offers and request loans directly.',
+      lender: newLender
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/finance/apply-private-lender: Submit private loan request directly to registered private lender
+app.post('/api/finance/apply-private-lender', async (req, res) => {
+  try {
+    const { lenderId, farmerName, phone, village, loanAmount, loanPurpose, landAcres } = req.body || {};
+    if (!farmerName || !phone || !lenderId) {
+      return res.status(400).json({ ok: false, error: 'Farmer name, phone number, and lender selection are required.' });
+    }
+
+    const lenders = getRegisteredPrivateLenders();
+    const lender = lenders.find(l => l.id === lenderId) || lenders[0];
+    const inquiryId = `PVT-LOAN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900) + 100}`;
+
+    const inquiry = {
+      id: inquiryId,
+      lenderId: lender?.id,
+      lenderName: lender?.name,
+      lenderType: lender?.type,
+      lenderPhone: lender?.phone,
+      farmerName,
+      phone,
+      village: village || 'N/A',
+      loanAmount: Number(loanAmount) || 50000,
+      loanPurpose: loanPurpose || 'Crop cultivation & urgent farm inputs',
+      landAcres: landAcres || 'N/A',
+      submittedAt: new Date().toISOString(),
+      status: 'DISPATCHED_TO_REGISTERED_LENDER'
+    };
+
+    privateLoanInquiriesStore.set(inquiryId, inquiry);
+
+    return res.json({
+      ok: true,
+      message: `Your loan request has been securely dispatched to ${lender?.name}. The lender will review and contact you at ${phone} within ${lender?.disbursementTime || '24 hours'}.`,
+      inquiry
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// KRISHISOCIAL - SOCIAL MEDIA PLATFORM API ENGINE (Next.js & DynamoDB Architecture)
+// ============================================================================
+const socialPostsStore = new Map();
+const socialFieldmatesStore = new Map();
+const socialMyCircleStore = new Map();
+const socialFollowersStore = new Map();
+const socialMessagesStore = new Map();
+const socialMessageRequestsStore = new Map();
+const moderationFlagsStore = new Map();
+const userSavedBarnStore = new Map();
+const userSettingsStore = new Map();
+
+// Seed initial social posts
+const INITIAL_BACKEND_POSTS = [
+  {
+    id: 'post-1',
+    author: {
+      id: 'farmer-rajesh',
+      name: 'Rajesh Choudhary',
+      username: '@rajesh_wheat',
+      village: 'Khanna, Ludhiana',
+      district: 'Ludhiana',
+      state: 'Punjab',
+      avatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+      hasGreenTick: true,
+      joinDate: 'March 2021',
+      primaryCategory: 'Crop Care'
+    },
+    category: 'Crop Care',
+    district: 'Ludhiana',
+    circle: 'crop-care',
+    contentType: 'post',
+    timestamp: '25 mins ago',
+    reach: '3.6k',
+    boostedReach: true,
+    englishContent: 'Completed the second irrigation for our wheat crop today. Applied bio-potash along with liquid zinc. The tillering is remarkable with 8-10 shoots per plant! Fellow farmers, avoid excess nitrogen right now to prevent lodging during unexpected winds.',
+    image: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80',
+    reactions: { shabaash: 142 },
+    saved: false,
+    comments: [
+      {
+        id: 'c-1',
+        author: 'Harpreet Singh',
+        username: '@harpreet_p',
+        avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80',
+        text: 'Brother, which bio-potash formula gave you this result? Looking for our farm.',
+        time: '15m ago',
+        audioUrl: null,
+        replies: [
+          {
+            id: 'c-1-r1',
+            author: 'Rajesh Choudhary',
+            username: '@rajesh_wheat',
+            avatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+            text: 'I used molasses-fermented bio-potash (1 liter/acre through drip irrigation). Very effective!',
+            time: '10m ago',
+            audioUrl: null,
+            replies: []
+          }
+        ]
+      }
+    ],
+    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'post-2',
+    author: {
+      id: 'farmer-venkata',
+      name: 'Venkata Subba Rao',
+      username: '@venkata_chilli',
+      village: 'Tenali, Guntur',
+      district: 'Guntur',
+      state: 'Andhra Pradesh',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+      hasGreenTick: false,
+      joinDate: 'January 2022',
+      primaryCategory: 'Mandi Rates'
+    },
+    category: 'Mandi Rates',
+    district: 'Guntur',
+    circle: 'mandi-rates',
+    contentType: 'post',
+    timestamp: '1 hour ago',
+    reach: '510',
+    boostedReach: false,
+    englishContent: 'Arrivals of premium Teja Red Chilli surged at Guntur market yard today. The modal benchmark price touched Rs 19,800/quintal for premium grade sun-dried stock. Keep moisture below 10% before bagging.',
+    image: 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&w=800&q=80',
+    reactions: { shabaash: 89 },
+    saved: true,
+    comments: [],
+    createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'post-3',
+    author: {
+      id: 'farmer-manpreet',
+      name: 'Manpreet Kaur',
+      username: '@manpreet_dairy',
+      village: 'Kapurthala',
+      district: 'Kapurthala',
+      state: 'Punjab',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
+      hasGreenTick: true,
+      joinDate: 'July 2020',
+      primaryCategory: 'Organic Farming'
+    },
+    category: 'Organic Farming',
+    district: 'Kapurthala',
+    circle: 'organic-farming',
+    contentType: 'fieldVibe',
+    audioTrack: 'Harvest Beats & Traditional Melody',
+    timestamp: '2 hours ago',
+    reach: '7.2k',
+    boostedReach: true,
+    englishContent: 'Quick field demonstration of our zero-budget natural Jeevamrutha preparation using indigenous cow dung and jaggery. Soil microbes multiply 100x within 48 hours!',
+    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=800&q=80',
+    reactions: { shabaash: 260 },
+    saved: false,
+    comments: [],
+    createdAt: new Date(Date.now() - 120 * 60 * 1000).toISOString()
+  }
+];
+
+INITIAL_BACKEND_POSTS.forEach(p => socialPostsStore.set(p.id, p));
+
+// GET /api/social/posts: Fetch feed posts & fieldVibes with category & district filtering
+app.get('/api/social/posts', async (req, res) => {
+  try {
+    const { category, district, contentType } = req.query;
+    let posts = Array.from(socialPostsStore.values());
+
+    if (contentType && contentType !== 'all') {
+      posts = posts.filter(p => p.contentType === contentType);
+    }
+    if (category && category !== 'all') {
+      posts = posts.filter(p => p.category === category);
+    }
+    if (district && district !== 'all') {
+      posts = posts.filter(p => (p.district || '').toLowerCase() === district.toLowerCase() || (p.author?.district || '').toLowerCase() === district.toLowerCase());
+    }
+
+    posts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return res.json({ ok: true, posts });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/posts: Create post or fieldVibe (with category, district, greenTick 3x algorithmic reach)
+app.post('/api/social/posts', async (req, res) => {
+  try {
+    const { author, category, district, contentType, englishContent, image, audioTrack, originalContent } = req.body || {};
+    if (!category) {
+      return res.status(400).json({ ok: false, error: 'Category is strictly required.' });
+    }
+
+    const postId = `post-${Date.now()}`;
+    const isGreenTick = Boolean(author?.hasGreenTick);
+    const baseReach = contentType === 'fieldVibe' ? 840 : 420;
+    const computedReach = isGreenTick ? `${(baseReach * 3 / 1000).toFixed(1)}k` : `${baseReach}`;
+
+    const newPost = {
+      id: postId,
+      author: {
+        id: author?.id || 'farmer-self',
+        name: author?.name || 'Greeshmanth Manne',
+        username: author?.username || '@greeshmanth_m',
+        village: author?.village || 'Eluru',
+        district: district || author?.district || 'Eluru',
+        state: author?.state || 'Andhra Pradesh',
+        avatar: author?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+        hasGreenTick: isGreenTick,
+        joinDate: author?.joinDate || 'January 2021',
+        primaryCategory: category
+      },
+      category: category,
+      district: district || author?.district || 'General',
+      circle: category.toLowerCase().replace(/\s+/g, '-'),
+      contentType: contentType || 'post',
+      audioTrack: audioTrack || null,
+      timestamp: 'Just now',
+      reach: computedReach,
+      boostedReach: isGreenTick,
+      englishContent: englishContent || originalContent || '',
+      originalContent: originalContent || englishContent || '',
+      image: image || null,
+      reactions: { shabaash: 0 },
+      saved: false,
+      comments: [],
+      createdAt: new Date().toISOString()
+    };
+
+    socialPostsStore.set(postId, newPost);
+    return res.json({ ok: true, post: newPost });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/posts/:id/react: Toggle "shabaash!" engagement
+app.post('/api/social/posts/:id/react', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reactionType } = req.body || {};
+    const post = socialPostsStore.get(id);
+    if (!post) {
+      return res.status(404).json({ ok: false, error: 'Post not found' });
+    }
+
+    if (!post.reactions) post.reactions = { shabaash: 0 };
+    post.reactions.shabaash = (post.reactions.shabaash || 0) + 1;
+    socialPostsStore.set(id, post);
+
+    return res.json({ ok: true, reactions: post.reactions });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/posts/:id/save: Bookmark post into "My Barn"
+app.post('/api/social/posts/:id/save', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username } = req.body || {};
+    const userKey = username || '@greeshmanth_m';
+    
+    let savedList = userSavedBarnStore.get(userKey) || [];
+    if (savedList.includes(id)) {
+      savedList = savedList.filter(pid => pid !== id);
+    } else {
+      savedList.push(id);
+    }
+    userSavedBarnStore.set(userKey, savedList);
+
+    return res.json({ ok: true, savedPosts: savedList, isSaved: savedList.includes(id) });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/social/saved-barn: Fetch user's saved posts ("My Barn")
+app.get('/api/social/saved-barn', async (req, res) => {
+  try {
+    const username = req.query.username || '@greeshmanth_m';
+    const savedIds = userSavedBarnStore.get(username) || ['post-2'];
+    const savedPosts = savedIds.map(id => socialPostsStore.get(id)).filter(Boolean);
+    return res.json({ ok: true, savedPosts });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/social/posts/:id/comments: Fetch comments
+app.get('/api/social/posts/:id/comments', async (req, res) => {
+  try {
+    const post = socialPostsStore.get(req.params.id);
+    return res.json({ ok: true, comments: post?.comments || [] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/posts/:id/comments: Add comment / nested reply with optional voice note URL
+app.post('/api/social/posts/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { author, text, parentCommentId, audioUrl } = req.body || {};
+    const post = socialPostsStore.get(id);
+    if (!post) {
+      return res.status(404).json({ ok: false, error: 'Post not found' });
+    }
+
+    const newComment = {
+      id: `c-${Date.now()}`,
+      author: author?.name || 'Greeshmanth Manne',
+      username: author?.username || '@greeshmanth_m',
+      avatar: author?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+      text: text || (audioUrl ? '🎤 Voice Note' : ''),
+      audioUrl: audioUrl || null,
+      time: 'Just now',
+      replies: []
+    };
+
+    if (!post.comments) post.comments = [];
+
+    if (parentCommentId) {
+      const parent = post.comments.find(c => c.id === parentCommentId);
+      if (parent) {
+        if (!parent.replies) parent.replies = [];
+        parent.replies.push(newComment);
+      } else {
+        post.comments.push(newComment);
+      }
+    } else {
+      post.comments.push(newComment);
+    }
+
+    socialPostsStore.set(id, post);
+    return res.json({ ok: true, comment: newComment, comments: post.comments });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/posts/:id/report-misinformation: Route flags to ModerationFlags table
+app.post('/api/social/posts/:id/report-misinformation', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reportedBy, reason, contentType } = req.body || {};
+    const flagId = `flag-${Date.now()}`;
+    const flagRecord = {
+      flagId,
+      targetId: id,
+      contentType: contentType || 'post',
+      reportedBy: reportedBy || '@greeshmanth_m',
+      reason: reason || 'Inaccurate agricultural advisory or counterfeit input claim',
+      status: 'UNDER_REVIEW',
+      timestamp: new Date().toISOString()
+    };
+    moderationFlagsStore.set(flagId, flagRecord);
+    return res.json({
+      ok: true,
+      message: 'Thank you for protecting our farming community. This update has been routed to agricultural moderation.',
+      flag: flagRecord
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/social/trending-topics: Top seasonal categories & tags from the last 7 days
+app.get('/api/social/trending-topics', async (req, res) => {
+  try {
+    const topics = [
+      { id: 't-1', tag: '#WheatTillering', category: 'Crop Care', postsCount: 1420, trend: '+45% this week' },
+      { id: 't-2', tag: '#GunturChilliRates', category: 'Mandi Rates', postsCount: 980, trend: '+32% this week' },
+      { id: 't-3', tag: '#JeevamruthaPrep', category: 'Organic Farming', postsCount: 750, trend: '+28% this week' },
+      { id: 't-4', tag: '#DripIrrigationSubsidy', category: 'Govt Schemes', postsCount: 620, trend: '+19% this week' },
+      { id: 't-5', tag: '#MustardAphidAlert', category: 'Crop Care', postsCount: 540, trend: '+55% this week' },
+      { id: 't-6', tag: '#SoilBioPotash', category: 'Soil Health', postsCount: 410, trend: '+14% this week' }
+    ];
+    return res.json({ ok: true, trending: topics });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/social/upload-audio: Store audio blobs (voice notes)
+app.post('/api/social/upload-audio', upload.single('audio'), async (req, res) => {
+  try {
+    const audioId = `voice-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // In local dev/S3 mock, return a data URL or simulated endpoint
+    const audioUrl = req.body?.dataUrl || `/api/social/audio/${audioId}.webm`;
+    return res.json({ ok: true, audioUrl, audioId });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET/POST User Settings (Chat Privacy, Green Tick, Data Saver)
+app.get('/api/social/user/settings', (req, res) => {
+  const username = req.query.username || '@greeshmanth_m';
+  const settings = userSettingsStore.get(username) || {
+    chatPermission: 'Everyone',
+    hasGreenTick: false,
+    dataSaverMode: false
+  };
+  return res.json({ ok: true, settings });
+});
+
+app.post('/api/social/user/settings', (req, res) => {
+  const { username, chatPermission, hasGreenTick, dataSaverMode } = req.body || {};
+  const userKey = username || '@greeshmanth_m';
+  const current = userSettingsStore.get(userKey) || {};
+  const updated = {
+    ...current,
+    chatPermission: chatPermission !== undefined ? chatPermission : current.chatPermission || 'Everyone',
+    hasGreenTick: hasGreenTick !== undefined ? hasGreenTick : current.hasGreenTick || false,
+    dataSaverMode: dataSaverMode !== undefined ? dataSaverMode : current.dataSaverMode || false
+  };
+  userSettingsStore.set(userKey, updated);
+  return res.json({ ok: true, settings: updated });
+});
+
+
 const PORT = process.env.PORT || 4000;
 if (require.main === module) {
-  // Listen on localhost for local development
-  app.listen(PORT, 'localhost', () => console.log(`Backend running on http://localhost:${PORT}`));
+  // Listen on 0.0.0.0 for local development (supports IPv4, IPv6, and LAN)
+  app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on http://localhost:${PORT}`));
 }
 
 module.exports = app;

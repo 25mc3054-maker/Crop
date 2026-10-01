@@ -62,8 +62,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // For TTS audio requests, try network then cache fallback
-  if (event.request.url.includes('/tts')) {
+  // For TTS audio and social feeds, cache responses for low-bandwidth / offline sync
+  if (event.request.url.includes('/tts') || event.request.url.includes('/api/social/posts')) {
     event.respondWith(
       fetch(event.request).then(res => {
         const copy = res.clone()

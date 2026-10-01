@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from './config';
+import Navbar from './components/Navbar';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -62,34 +63,21 @@ export default function SoilAnalyser({ onBack }) {
       const token = localStorage.getItem('farmer_token');
       if (!token) return alert('Please login to share reports');
 
-      const res = await axios.get(`${API_BASE_URL}/soil-report/${reportId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+      const res = await axios.post(`${API_BASE_URL}/soil-report/${reportId}/share`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       
-      const file = new File([res.data], `soil-report-${reportId}.pdf`, { type: 'application/pdf' });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: 'Soil Health Report',
-          text: `Soil Health Report: ${analysis?.type || 'Analysis'}`
-        });
-        return;
-      }
+      const shareUrl = res.data.publicUrl || `${window.location.origin}/#/soil-report/${reportId}`;
+      const text = `🌱 *Krishi-Net Soil Health Card*\nType: ${analysis?.type}\npH: ${analysis?.ph}\nMoisture: ${analysis?.moisture}\nRecommended Crops: ${analysis?.crops?.join(', ')}\nView full report: ${shareUrl}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     } catch (e) {
-      if (e.name !== 'AbortError') console.error('Share failed', e);
+      console.error(e);
+      alert('Failed to generate share link');
     }
-
-    // Fallback: WhatsApp Text Share
-    const a = analysis || {};
-    const text = `*SOIL HEALTH REPORT*\nType: ${a.type}\nHealth: ${a.health}\npH: ${a.ph}\nCrops: ${a.crops?.join(', ') || 'N/A'}`;
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
   };
 
   const handleUpload = async () => {
-    if (!photo) return alert("Please select a soil photo first");
+    if (!photo) return alert("Please select or capture a soil photo first.");
     setLoading(true);
     try {
       const fd = new FormData();
@@ -105,7 +93,6 @@ export default function SoilAnalyser({ onBack }) {
       if (res.data.id) data.reportId = res.data.id;
       setResult(data);
       
-      // Refresh history
       if (token) {
         axios.get(`${API_BASE_URL}/my-soil-reports`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -120,33 +107,31 @@ export default function SoilAnalyser({ onBack }) {
     }
   };
 
-  // Prepare chart data (reverse history to show oldest to newest)
   const chartData = {
     labels: [...history].reverse().map(h => new Date(h.timestamp).toLocaleDateString()),
     datasets: [
       {
         label: 'pH Level',
         data: [...history].reverse().map(h => parseFloat(h.analysis?.ph || 0)),
-        borderColor: 'rgb(255, 99, 132)',
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22, 163, 74, 0.5)',
       },
       {
         label: 'Moisture (%)',
         data: [...history].reverse().map(h => parseFloat(h.analysis?.moisture || 0)),
-        borderColor: 'rgb(53, 162, 235)',
-        backgroundColor: 'rgba(53, 162, 235, 0.5)',
+        borderColor: '#0284c7',
+        backgroundColor: 'rgba(2, 132, 199, 0.5)',
       },
     ],
   };
 
-  // Use CSS utility classes for buttons to follow theme
-  // small helper inline styles kept only for spacing where needed
-
   return (
-    <div className="container">
-      <button onClick={onBack} style={{ ...secondaryButtonStyle, marginBottom: '1rem' }}>&larr; Back to Dashboard</button>
-      <h1>Soil Health Analyser</h1>
-      <p>Upload a photo of your farm soil to get a health report and crop recommendations.</p>
+    <div className="container" style={{ padding: '24px 16px', minHeight: '100vh', backgroundColor: 'var(--bg-dark)' }}>
+      <Navbar title="🌱 Soil Health Analyser" showBack={true} onBack={onBack} />
+
+      <div style={{ marginBottom: '20px' }}>
+        <p style={{ color: '#a7f3d0', fontSize: 14 }}>Upload a photo of your farm soil to get a comprehensive health report, nutrient breakdown, and crop recommendations.</p>
+      </div>
 
       <div className="card">
         <input
@@ -156,68 +141,79 @@ export default function SoilAnalyser({ onBack }) {
           onChange={e => setPhoto(e.target.files[0])}
           style={{ display: 'none' }}
         />
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label htmlFor="soil-photo-input" className="btn btn-ghost" style={{ display: 'inline-block' }}>
-            Choose Soil Photo
+        <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <label htmlFor="soil-photo-input" className="btn btn-dark" style={{ margin: 0, cursor: 'pointer' }}>
+            📷 Choose Soil Photo
           </label>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            {photo ? photo.name : 'No file selected'}
+          <span style={{ color: '#000000', fontSize: '14px', fontWeight: 700 }}>
+            {photo ? `Selected: ${photo.name}` : 'No file selected'}
           </span>
         </div>
-        <button onClick={handleUpload} disabled={loading} className="btn btn-primary" style={{ marginTop: '14px', opacity: loading ? 0.75 : 1 }}>
-          {loading ? 'Analyzing Soil...' : 'Analyze Health & Crops'}
+        <button onClick={handleUpload} disabled={loading} className="btn btn-primary" style={{ padding: '12px 24px' }}>
+          {loading ? '⏳ Analyzing Soil Sample...' : '🔬 Analyze Health & Crop Suitability'}
         </button>
       </div>
       
       {result && (
-        <div className="card result" style={{ borderLeft: '5px solid #4CAF50' }}>
-          <h3>Analysis Report</h3>
+        <div className="card" style={{ borderLeft: '8px solid #16a34a' }}>
+          <div style={{ display: 'inline-block', background: '#bbf7d0', color: '#000000', padding: '3px 8px', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', marginBottom: 8 }}>
+            Diagnostic Results
+          </div>
+          <h3 style={{ color: '#000000', fontSize: 22, fontWeight: 900, marginBottom: 12 }}>Analysis Report</h3>
           <p><strong>Soil Type:</strong> {result.type}</p>
           <p><strong>Health Condition:</strong> {result.health}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', margin: '10px 0' }}>
-            <div style={{ background: '#f1f8e9', padding: '10px', borderRadius: '5px' }}>
-              <strong>pH Level:</strong> {result.ph}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', margin: '14px 0' }}>
+            <div style={{ background: '#ffffff', padding: '12px', border: '2px solid #16a34a', color: '#000000' }}>
+              <strong>pH Level:</strong> <span style={{ fontSize: 18, fontWeight: 900, color: '#15803d' }}>{result.ph}</span>
             </div>
-            <div style={{ background: '#e3f2fd', padding: '10px', borderRadius: '5px' }}>
-              <strong>Moisture:</strong> {result.moisture}
+            <div style={{ background: '#ffffff', padding: '12px', border: '2px solid #0284c7', color: '#000000' }}>
+              <strong>Moisture:</strong> <span style={{ fontSize: 18, fontWeight: 900, color: '#0369a1' }}>{result.moisture}</span>
             </div>
           </div>
           <p><strong>Nutrients (N-P-K):</strong> {result.nutrients?.N} - {result.nutrients?.P} - {result.nutrients?.K}</p>
           
-          <div style={{ marginTop: '15px' }}>
-            <strong>Recommended Crops:</strong>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '5px' }}>
-              {result.crops?.map(c => <span key={c} style={{ background: '#2e7d32', color: 'white', padding: '5px 12px', borderRadius: '15px' }}>{c}</span>)}
+          <div style={{ marginTop: '16px' }}>
+            <strong style={{ color: '#000000' }}>Recommended Crops for High Yield:</strong>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+              {result.crops?.map(c => (
+                <span key={c} style={{ background: '#00eb78', color: '#000000', padding: '6px 14px', fontWeight: 900, border: '1px solid #000000' }}>
+                  🌾 {c}
+                </span>
+              ))}
             </div>
           </div>
           
           {result.reportId && (
-            <div style={{ marginTop: '15px' }}>
-              <button onClick={() => handleDownloadPdf(result.reportId)} className="btn btn-ghost" style={{ marginRight: '10px' }}>Download PDF</button>
-              <button onClick={() => handleShare(result.reportId, result)} className="btn btn-primary" style={{ padding: '10px 18px' }}>Share on WhatsApp</button>
+            <div style={{ marginTop: '18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => handleDownloadPdf(result.reportId)} className="btn btn-dark">
+                📄 Download Official PDF
+              </button>
+              <button onClick={() => handleShare(result.reportId, result)} className="btn btn-primary">
+                💬 Share Report on WhatsApp
+              </button>
             </div>
           )}
         </div>
       )}
 
       {history.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h3>Health Trends</h3>
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <Line options={{ responsive: true, plugins: { legend: { position: 'top' }, title: { display: true, text: 'Soil pH & Moisture Over Time' } } }} data={chartData} />
+        <div style={{ marginTop: '2.5rem' }}>
+          <h3 style={{ color: '#ffffff', fontWeight: 900, marginBottom: 12 }}>📈 Historical Health Trends</h3>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <Line options={{ responsive: true, plugins: { legend: { position: 'top' }, title: { display: true, text: 'Soil pH & Moisture Timeline' } } }} data={chartData} />
           </div>
 
-          <h3>Previous Reports</h3>
+          <h3 style={{ color: '#ffffff', fontWeight: 900, marginBottom: 12 }}>📋 Previous Soil Health Reports</h3>
           {history.map((h, i) => (
-            <div key={i} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div key={i} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: 10 }}>
               <div>
-                <div style={{ fontSize: '0.85rem', color: '#666' }}>{new Date(h.timestamp).toLocaleString()}</div>
-                <div style={{ fontWeight: 'bold' }}>{h.analysis?.type || 'Unknown Soil'}</div>
+                <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 700 }}>{new Date(h.timestamp).toLocaleString()}</div>
+                <div style={{ fontWeight: 900, fontSize: 16, color: '#000000' }}>{h.analysis?.type || 'Standard Soil Profile'}</div>
               </div>
-              <div>
-                <button onClick={() => handleDownloadPdf(h.reportId)} className="btn btn-ghost" style={{ padding: '7px 12px', marginRight: '6px' }}>PDF</button>
-                <button onClick={() => handleShare(h.reportId, h.analysis)} className="btn btn-primary" style={{ padding: '7px 12px', marginRight: '6px', boxShadow: 'none' }}>Share</button>
-                <button onClick={() => setResult({ ...h.analysis, reportId: h.reportId })} className="btn btn-ghost" style={{ padding: '7px 12px' }}>View</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleDownloadPdf(h.reportId)} className="btn btn-dark" style={{ padding: '8px 14px', fontSize: 12 }}>PDF</button>
+                <button onClick={() => handleShare(h.reportId, h.analysis)} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 12 }}>Share</button>
+                <button onClick={() => setResult({ ...h.analysis, reportId: h.reportId })} className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 12, borderColor: '#000000', color: '#000000' }}>View</button>
               </div>
             </div>
           ))}
