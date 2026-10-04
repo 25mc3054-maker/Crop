@@ -30,7 +30,15 @@ exports.handler = async function(event) {
   try {
     const lang = event.lang || 'en'
     const intent = event.intent || 'soil_analysis'
-    let promptTemplate = prompts[intent] ? (prompts[intent][lang] || prompts[intent]['en']) : event.prompt
+    const intentPrompts = prompts.intents || {}
+    const defaultPrompt = intentPrompts.default?.system
+    let promptTemplate = event.prompt || intentPrompts[intent]?.system || defaultPrompt
+
+    if (!promptTemplate) {
+      promptTemplate = lang === 'en'
+        ? 'Please ask a clear question about crop health, weather, soil, mandi prices, equipment, or government schemes.'
+        : 'कृपया फसल, मौसम, मिट्टी, मंडी भाव, उपकरण या सरकारी योजना पर साफ सवाल पूछें।'
+    }
 
     // If imageBase64 provided, call Rekognition DetectLabels with retries and timeout
     let rekog = null
@@ -43,7 +51,7 @@ exports.handler = async function(event) {
     }
 
     // Call Bedrock (mock or real depending on env) with retry/timeouts
-    const bedrockCall = () => callBedrock(promptTemplate, { modelId: event.modelId })
+    const bedrockCall = () => callBedrock(promptTemplate, { modelId: event.modelId, intent, lang })
     const llm = await retry(() => withTimeout(bedrockCall(), 12000), 3, 500)
 
     // Save result to S3 if bucket provided

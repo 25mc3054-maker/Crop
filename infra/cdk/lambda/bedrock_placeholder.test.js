@@ -3,12 +3,15 @@ const { callBedrockMock, callBedrock } = require('../../../backend/bedrock_place
 test('callBedrockMock returns expected structure', async () => {
   const res = await callBedrockMock('hello world')
   expect(res).toBeDefined()
-  expect(res.output).toMatch(/mocked bedrock response/)
+  expect(res.model).toMatch(/mock/)
+  expect(typeof res.output).toBe('string')
+  expect(res.output).toContain('कृपया')
 })
 
 test('callBedrock falls back to mock when USE_BEDROCK not set', async () => {
   process.env.USE_BEDROCK = 'false'
-  const res = await callBedrock('testing')
+  const res = await callBedrock('testing', { lang: 'en' })
   expect(res).toBeDefined()
-  expect(res.output).toMatch(/mocked bedrock response/)
+  expect(res.model).toMatch(/mock/)
+  expect(res.output).toContain('Please ask a clear question')
 })
