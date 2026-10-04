@@ -30,7 +30,16 @@ exports.handler = async function(event) {
   try {
     const lang = event.lang || 'en'
     const intent = event.intent || 'soil_analysis'
-    let promptTemplate = prompts[intent] ? (prompts[intent][lang] || prompts[intent]['en']) : event.prompt
+    const promptIntents = prompts.intents || {}
+    const intentPrompt = promptIntents[intent] || prompts[intent]
+    const defaultPrompt = promptIntents.default || prompts.default
+    let promptTemplate = intentPrompt
+      ? (intentPrompt[lang] || intentPrompt.en || intentPrompt.system)
+      : undefined
+    if (!promptTemplate && defaultPrompt) {
+      promptTemplate = defaultPrompt[lang] || defaultPrompt.en || defaultPrompt.system
+    }
+    if (!promptTemplate) promptTemplate = event.prompt || ''
 
     // If imageBase64 provided, call Rekognition DetectLabels with retries and timeout
     let rekog = null
@@ -43,7 +52,7 @@ exports.handler = async function(event) {
     }
 
     // Call Bedrock (mock or real depending on env) with retry/timeouts
-    const bedrockCall = () => callBedrock(promptTemplate, { modelId: event.modelId })
+    const bedrockCall = () => callBedrock(promptTemplate, { modelId: event.modelId, intent, lang })
     const llm = await retry(() => withTimeout(bedrockCall(), 12000), 3, 500)
 
     // Save result to S3 if bucket provided
