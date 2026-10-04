@@ -30,7 +30,9 @@ exports.handler = async function(event) {
   try {
     const lang = event.lang || 'en'
     const intent = event.intent || 'soil_analysis'
-    let promptTemplate = prompts[intent] ? (prompts[intent][lang] || prompts[intent]['en']) : event.prompt
+    const intentPrompts = prompts.intents || {}
+    const defaultPrompt = intentPrompts.default?.system || event.prompt || ''
+    let promptTemplate = intentPrompts[intent]?.system || defaultPrompt
 
     // If imageBase64 provided, call Rekognition DetectLabels with retries and timeout
     let rekog = null
